@@ -1,43 +1,54 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.router import router
+from app.core.config import Settings
 
-app = FastAPI()
+# Initialize settings
+settings = Settings(app_name="Cineforge API", debug=True, version="0.1.0")
 
-# CORS configuration
-app.add_middleware(CORSMiddleware,
-    allow_origins=["*"],  # Update this to your front-end domain(s) if needed
-    allow_credentials=True,
-    allow_methods=["*"],  # Update methods if necessary
-    allow_headers=["*"]
+# Create FastAPI app instance
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.version,
+    description="Backend API for the Cineforge AI short-film creation platform",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
+# Configure CORS for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Health endpoint
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint - returns API status"""
+    return {
+        "message": "Welcome to Cineforge API",
+        "status": "running",
+        "version": settings.version,
+        "docs": "/docs"
+    }
+
+# Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint - confirms API is running"""
+    return {
+        "status": "healthy",
+        "service": "cineforge-api",
+        "timestamp": "2026-03-08T17:00:00Z"
+    }
 
-# Route registrations for different entities
-@app.get("/projects")
-async def get_projects():
-    return {"message": "List of projects"}
+# Include the main API router
+app.include_router(router, prefix="/api")
 
-@app.get("/scripts")
-async def get_scripts():
-    return {"message": "List of scripts"}
-
-@app.get("/storyboards")
-async def get_storyboards():
-    return {"message": "List of storyboards"}
-
-@app.get("/assets")
-async def get_assets():
-    return {"message": "List of assets"}
-
-@app.get("/scenes")
-async def get_scenes():
-    return {"message": "List of scenes"}
-
-@app.get("/films")
-async def get_films():
-    return {"message": "List of films"}
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
