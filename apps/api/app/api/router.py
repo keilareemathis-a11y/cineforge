@@ -7,6 +7,7 @@ from .storyboards import router as storyboards_router
 from .assets import router as assets_router
 from .scenes import router as scenes_router
 from .films import router as films_router
+from .shots import router as shots_router
 
 # Create the main router
 router = APIRouter()
@@ -18,3 +19,4 @@ router.include_router(storyboards_router, prefix='/storyboards', tags=['storyboa
 router.include_router(assets_router, prefix='/assets', tags=['assets'])
 router.include_router(scenes_router, prefix='/scenes', tags=['scenes'])
 router.include_router(films_router, prefix='/films', tags=['films'])
+router.include_router(shots_router, prefix='/shots', tags=['shots'])
