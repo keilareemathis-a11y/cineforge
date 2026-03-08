@@ -27,7 +27,7 @@ export default function EditorClient({ filmId }: EditorClientProps) {
     error: null,
   });
 
-  const [_versionsData, setVersionsData] = useState<ShotVersionsResponse | null>(null);
+  const [, setVersionsData] = useState<ShotVersionsResponse | null>(null);
 
   const refreshTimeline = useCallback(async () => {
     const tl = await loadTimeline(filmId);

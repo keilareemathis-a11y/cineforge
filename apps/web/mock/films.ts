@@ -52,7 +52,7 @@ export const mockFilms: PublishedFilm[] = [
   {
     id: 'film-3',
     title: 'Last Light on Europa',
-    description: 'A lone astronaut discovers something ancient on Jupiters moon in this stunning sci-fi short.',
+    description: 'A lone astronaut discovers something ancient on Jupiter\'s moon in this stunning sci-fi short.',
     thumbnail_url: 'https://picsum.photos/seed/film3/640/360',
     video_url: '',
     duration_seconds: 312,
