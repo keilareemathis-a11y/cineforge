@@ -1,25 +1,27 @@
-from flask import Flask, request, jsonify
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Optional, Any
 
-app = Flask(__name__)
+router = APIRouter()
 
-# POST /generate
-@app.route('/generate', methods=['POST'])
+
+class ScriptCreate(BaseModel):
+    content: Optional[Any] = None
+
+
+@router.post("/generate")
 def generate_script():
     # Stub response for script generation
-    return jsonify({'message': 'Script generated successfully', 'script': {}}), 201
+    return {"message": "Script generated successfully", "script": {}}
 
-# GET /{id}
-@app.route('/<id>', methods=['GET'])
-def get_script(id):
+
+@router.get("/{id}")
+def get_script(id: str):
     # Stub response for retrieving a script by id
-    return jsonify({'id': id, 'script': {}})
+    return {"id": id, "script": {}}
 
-# PUT /{id}
-@app.route('/<id>', methods=['PUT'])
-def edit_script(id):
+
+@router.put("/{id}")
+def edit_script(id: str, data: ScriptCreate):
     # Stub response for editing a script by id
-    data = request.json
-    return jsonify({'message': 'Script updated successfully', 'id': id, 'script': data})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    return {"message": "Script updated successfully", "id": id, "script": data}

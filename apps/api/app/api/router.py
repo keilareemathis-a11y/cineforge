@@ -1,12 +1,12 @@
 from fastapi import APIRouter
 
 # Import route modules
-from .projects import router as projects_router
-from .scripts import router as scripts_router
-from .storyboards import router as storyboards_router
-from .assets import router as assets_router
-from .scenes import router as scenes_router
-from .films import router as films_router
+from .routes.projects import router as projects_router
+from .routes.scripts import router as scripts_router
+from .routes.storyboards import router as storyboards_router
+from .routes.assets import router as assets_router
+from .routes.scenes import router as scenes_router
+from .routes.films import router as films_router
 
 # Create the main router
 router = APIRouter()

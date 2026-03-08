@@ -1,43 +1,36 @@
-from flask import Flask, jsonify, request
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Optional, Any
 
-app = Flask(__name__)
+router = APIRouter()
 
-# POST /generate
-@app.route('/generate', methods=['POST'])
+
+class StoryboardUpdate(BaseModel):
+    content: Optional[Any] = None
+
+
+@router.post("/generate")
 def generate_storyboard():
     # Stub response
-    response = {
-        'message': 'Storyboard generated',
-        'frames': [
-            {'frame_id': 1, 'content': 'Frame 1 content'},
-            {'frame_id': 2, 'content': 'Frame 2 content'}
-        ]
+    return {
+        "message": "Storyboard generated",
+        "frames": [
+            {"frame_id": 1, "content": "Frame 1 content"},
+            {"frame_id": 2, "content": "Frame 2 content"},
+        ],
     }
-    return jsonify(response), 201
 
-# GET /{id}
-@app.route('/<int:id>', methods=['GET'])
-def get_storyboard(id):
+
+@router.get("/{id}")
+def get_storyboard(id: int):
     # Stub response for a specific storyboard
-    response = {
-        'id': id,
-        'frames': [
-            {'frame_id': id, 'content': f'Storyboard frame content for id {id}'}
-        ]
+    return {
+        "id": id,
+        "frames": [{"frame_id": id, "content": f"Storyboard frame content for id {id}"}],
     }
-    return jsonify(response)
 
-# PUT /{id}
-@app.route('/<int:id>', methods=['PUT'])
-def update_storyboard(id):
-    data = request.json
+
+@router.put("/{id}")
+def update_storyboard(id: int, data: StoryboardUpdate):
     # Stub response for updating a specific storyboard
-    response = {
-        'message': 'Storyboard updated',
-        'id': id,
-        'updated_data': data
-    }
-    return jsonify(response)
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    return {"message": "Storyboard updated", "id": id, "updated_data": data}

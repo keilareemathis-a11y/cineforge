@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import router
 from app.core.config import Settings
+from app.core.database import init_db
 
 # Initialize settings
 settings = Settings(app_name="Cineforge API", debug=True, version="0.1.0")
@@ -45,6 +46,9 @@ async def health_check():
         "service": "cineforge-api",
         "timestamp": "2026-03-08T17:00:00Z"
     }
+
+# Initialize database tables
+init_db()
 
 # Include the main API router
 app.include_router(router, prefix="/api")
