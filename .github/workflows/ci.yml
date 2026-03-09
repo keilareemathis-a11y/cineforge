@@ -27,3 +27,8 @@ jobs:
         run: pip install -r requirements.txt
 
      PYTHONPATH=. pytest tests/ -v --maxfail=1 --disable-warnings
+      - name: Run pytest
+        working-directory: apps/api
+        env:
+          PYTHONPATH: ${{ github.workspace }}/apps/api
+        run: pytest tests/ -v
