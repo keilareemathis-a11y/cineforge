@@ -18,6 +18,3 @@
 - Comments on shots and timelines
 - Version comparison viewer
 - Team permissions
-
----
-*Last updated: 2026-03-09*

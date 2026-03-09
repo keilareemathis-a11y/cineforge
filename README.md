@@ -1,29 +1,46 @@
 # CineForge
 
-**AI short-film creation and publishing platform.**
-
-Go from prompt or script → storyboard → AI-generated scenes → published short film, in minutes.
+**AI filmmaking studio in the browser. Generate shots, manage versions, build timelines, and export films.**
 
 ---
 
-## What It Is
+## Overview
 
-CineForge is an AI filmmaking tool that lets creators generate shots, 
+CineForge is an AI filmmaking tool that lets creators generate shots,
 manage shot versions, build film drafts, and export finished films.
 
-## Key Features
+## Core Features
 
-- • AI shot generation
-• Shot version history
-• Timeline editor
-• Regenerate shots without breaking the timeline
-• Film export
-## Tech Stack
+- AI shot generation
+- Shot version history
+- Timeline editor
+- Regenerate shots without breaking the timeline
+- Film export
+
+## Architecture
+
+CineForge is built around a versioned filmmaking data model:
+
+```
 Project
- └ FilmDraft
-     └ TimelineItem
-         └ Shot
-             └ ShotVersion
+ └ FilmDraft        # a specific cut or version of the film
+     └ TimelineItem  # an ordered slot in the film's timeline
+         └ Shot      # a scene captured at a moment in time
+             └ ShotVersion  # an individual AI-generated render of a shot
+```
+
+- **Project** – the top-level creative workspace for a film
+- **FilmDraft** – a specific cut or assembly of the film's timeline
+- **TimelineItem** – an ordered slot that holds a shot in the draft
+- **Shot** – a single scene or moment; can have multiple versions
+- **ShotVersion** – one AI-generated render of a shot; the active version is used in export
+
+## Tech Stack
+
+- **Frontend**: Next.js (TypeScript)
+- **Backend**: FastAPI (Python)
+- **Database**: PostgreSQL + SQLAlchemy
+- **Infrastructure**: Docker Compose
 
 ## Project Structure
 
