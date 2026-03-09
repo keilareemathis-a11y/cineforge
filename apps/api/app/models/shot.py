@@ -13,6 +13,7 @@ class Shot(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     scene_id = Column(String, nullable=False)
     project_id = Column(String, nullable=True)
+    active_version_id = Column(String, nullable=True)
     shot_number = Column(Integer, nullable=True)
     title = Column(String, nullable=True)
     shot_type = Column(String, nullable=False)

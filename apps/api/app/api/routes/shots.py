@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.shot import Shot
+from app.models.shot_version import ShotVersion
 
 router = APIRouter()
 
@@ -120,3 +121,70 @@ def delete_shot(shot_id: str, db: Session = Depends(get_db)):
     db.delete(shot)
     db.commit()
     return {"message": "Shot deleted"}
+
+
+def _versions_response(shot: Shot) -> dict:
+    return {
+        "shot_id": shot.id,
+        "active_version_id": shot.active_version_id or "",
+        "versions": [
+            {
+                "id": v.id,
+                "shot_id": v.shot_id,
+                "version_number": v.version_number,
+                "image_url": v.image_url,
+                "video_url": v.video_url,
+                "status": v.status,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in sorted(shot.versions, key=lambda v: v.version_number, reverse=True)
+        ],
+    }
+
+
+@router.get("/{shot_id}/versions")
+def list_shot_versions(shot_id: str, db: Session = Depends(get_db)):
+    """List all versions for a shot."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    return _versions_response(shot)
+
+
+@router.post("/{shot_id}/versions/{version_id}/select")
+def select_shot_version(shot_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Set the active version for a shot."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    version = db.query(ShotVersion).filter(
+        ShotVersion.id == version_id, ShotVersion.shot_id == shot_id
+    ).first()
+    if version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    shot.active_version_id = version_id
+    db.commit()
+    db.refresh(shot)
+    return _versions_response(shot)
+
+
+@router.post("/{shot_id}/regenerate")
+def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
+    """Create a new pending version for a shot."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    next_number = max((v.version_number for v in shot.versions), default=0) + 1
+    new_version = ShotVersion(
+        shot_id=shot_id,
+        version_number=next_number,
+        status="pending",
+    )
+    db.add(new_version)
+    db.commit()
+    db.refresh(new_version)
+    db.refresh(shot)
+    return _versions_response(shot)
