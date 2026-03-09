@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, Integer, Float
+from sqlalchemy import Column, String, Text, DateTime, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -24,8 +24,19 @@ class Shot(Base):
     storyboard_image = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     image_prompt = Column(Text, nullable=True)
+    active_version_id = Column(String, ForeignKey("shot_versions.id", use_alter=True, name="fk_shot_active_version"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    versions = relationship("ShotVersion", back_populates="shot", cascade="all, delete-orphan")
+    versions = relationship(
+        "ShotVersion",
+        foreign_keys="[ShotVersion.shot_id]",
+        back_populates="shot",
+        cascade="all, delete-orphan",
+    )
+    active_version = relationship(
+        "ShotVersion",
+        foreign_keys=[active_version_id],
+        post_update=True,
+    )
     timeline_items = relationship("TimelineItem", back_populates="shot")
