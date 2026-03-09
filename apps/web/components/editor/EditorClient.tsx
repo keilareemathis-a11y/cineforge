@@ -7,6 +7,7 @@ import {
   loadVersions,
   selectVersion,
   regenerateShot,
+  renderFilm,
   moveTimelineItem,
   updateDuration,
 } from '../../lib/api/editor';
@@ -23,6 +24,7 @@ export default function EditorClient({ filmId }: EditorClientProps) {
     selectedTimelineItemId: null,
     selectedShotVersions: [],
     activeVersionId: null,
+    renderedVideoUrl: null,
     status: 'loading',
     error: null,
   });
@@ -78,6 +80,20 @@ export default function EditorClient({ filmId }: EditorClientProps) {
     await updateDuration(filmId, itemId, duration);
   };
 
+  const handleRenderFilm = async () => {
+    setState((s) => ({ ...s, status: 'saving' }));
+    try {
+      const result = await renderFilm(filmId);
+      setState((s) => ({ ...s, renderedVideoUrl: result.videoUrl, status: 'idle' }));
+    } catch (error) {
+      setState((s) => ({
+        ...s,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Render failed',
+      }));
+    }
+  };
+
   const selectedItem = state.timeline?.timeline_items.find((i) => i.id === state.selectedTimelineItemId);
 
   const sortedItems = state.timeline
@@ -99,11 +115,25 @@ export default function EditorClient({ filmId }: EditorClientProps) {
         </div>
         <button
           style={{ background: '#7c6fff', color: '#fff', border: 'none', borderRadius: '6px', padding: '10px 20px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}
-          onClick={() => alert('Publish flow coming soon!')}
+          onClick={handleRenderFilm}
         >
-          Publish
+          Render MP4
         </button>
       </div>
+
+      {state.renderedVideoUrl && (
+        <section style={{ background: '#1a1a2e', borderRadius: '8px', padding: '16px', border: '1px solid #2a2a4e', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ margin: 0, fontSize: '15px', color: '#e0e0ff' }}>Rendered Film</h2>
+            <a href={state.renderedVideoUrl} target="_blank" rel="noreferrer" style={{ color: '#9b8fff', fontSize: '13px' }}>Open MP4</a>
+          </div>
+          <video
+            controls
+            src={state.renderedVideoUrl}
+            style={{ width: '100%', borderRadius: '8px', background: '#000' }}
+          />
+        </section>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
         {/* Timeline */}

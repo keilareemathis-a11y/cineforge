@@ -61,6 +61,8 @@ class TestCreateShot:
         data = response.json()
         assert data["scene_id"] == "scene_1"
         assert data["status"] == "planned"
+        assert data["storyboard_image"].startswith("data:image/")
+        assert data["prompt"] == "Storyboard frame"
         assert "id" in data
 
     def test_create_shot_full(self):
@@ -261,6 +263,19 @@ class TestShotVersions:
         assert version_numbers == sorted(version_numbers, reverse=True)
         assert version_numbers[0] == 3
 
+    def test_get_versions_include_generated_visuals(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Wide sunset over a canyon"})
+        shot_id = resp.json()["id"]
+
+        client.post(f"/api/shots/{shot_id}/regenerate")
+        response = client.get(f"/api/shots/{shot_id}/versions")
+
+        assert response.status_code == 200
+        version = response.json()[0]
+        assert version["image_url"].startswith("data:image/")
+        assert version["status"] == "ready"
+        assert version["prompt"] == "Wide sunset over a canyon"
+
     def test_get_versions_not_found(self):
         response = client.get("/api/shots/nonexistent/versions")
         assert response.status_code == 404
@@ -303,6 +318,8 @@ class TestRegenerate:
         data = response.json()
         assert data["shot_id"] == shot_id
         assert data["new_version"]["version_number"] == 1
+        assert data["new_version"]["image_url"].startswith("data:image/")
+        assert data["new_version"]["status"] == "ready"
         assert data["active_version_id"] == data["new_version"]["id"]
 
     def test_regenerate_increments_version_number(self):
@@ -384,6 +401,41 @@ class TestRegenerate:
         response = client.post("/api/shots/nonexistent/regenerate")
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
+
+
+class TestSelectVersion:
+    def test_select_version_updates_shot_and_timeline(self):
+        _, draft_id = create_project_and_draft()
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]
+        second = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": second["id"]},
+        )
+
+        response = client.post(f"/api/shots/{shot_id}/versions/{first['id']}/select")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["active_version_id"] == first["id"]
+        assert data["versions"][0]["image_url"].startswith("data:image/")
+
+        shot = client.get(f"/api/shots/{shot_id}").json()
+        assert shot["active_version_id"] == first["id"]
+
+        timeline = client.get(f"/api/drafts/{draft_id}/timeline").json()
+        assert timeline["timeline_items"][0]["active_version_id"] == first["id"]
+
+    def test_select_version_not_found(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        response = client.post(f"/api/shots/{shot_id}/versions/does-not-exist/select")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "ShotVersion not found"
 
 
 # ---------------------------------------------------------------------------
@@ -486,3 +538,29 @@ class TestDraftTimeline:
         )
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
+
+
+class TestFilmRender:
+    def test_render_film_creates_mp4(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Rainy city street"})
+        shot_id = shot_resp.json()["id"]
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        version_id = regen["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": version_id},
+        )
+
+        render_response = client.post(f"/api/films/{draft_id}/render")
+        assert render_response.status_code == 200
+        render_data = render_response.json()
+        assert render_data["status"] == "rendered"
+        assert render_data["video_url"] == f"/api/films/{draft_id}/rendered"
+
+        video_response = client.get(render_data["video_url"])
+        assert video_response.status_code == 200
+        assert video_response.headers["content-type"] == "video/mp4"
+        assert len(video_response.content) > 0

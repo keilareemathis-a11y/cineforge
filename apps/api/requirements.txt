@@ -9,3 +9,4 @@ python-dotenv
 pytest
 pytest-asyncio
 httpx
+moviepy==2.2.1

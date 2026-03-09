@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.shot import Shot
+from app.services.generated_visuals import build_shot_prompt, shot_storyboard_image
 
 router = APIRouter()
 
@@ -30,9 +31,10 @@ def get_shots_by_scene(scene_id: str, db: Session = Depends(get_db)):
             "lens": shot.lens,
             "duration_estimate": shot.duration_estimate,
             "status": shot.status,
-            "storyboard_image": shot.storyboard_image,
+            "storyboard_image": shot_storyboard_image(shot),
             "notes": shot.notes,
             "image_prompt": shot.image_prompt,
+            "prompt": build_shot_prompt(shot),
             "created_at": shot.created_at.isoformat() if shot.created_at else None,
             "updated_at": shot.updated_at.isoformat() if shot.updated_at else None,
         }

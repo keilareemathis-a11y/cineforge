@@ -8,6 +8,7 @@ from app.models.film_draft import FilmDraft
 from app.models.timeline_item import TimelineItem
 from app.models.shot import Shot
 from app.models.shot_version import ShotVersion
+from app.services.generated_visuals import build_shot_prompt, shot_storyboard_image, shot_version_image
 
 router = APIRouter()
 
@@ -32,6 +33,10 @@ def _timeline_item_to_dict(item: TimelineItem) -> dict:
             "shot_type": shot.shot_type,
             "description": shot.description,
             "image_prompt": shot.image_prompt,
+            "prompt": build_shot_prompt(shot),
+            "storyboard_image": shot_storyboard_image(shot),
+            "active_version_id": shot.active_version_id,
+            "created_at": shot.created_at.isoformat() if shot.created_at else None,
         }
         if shot
         else None,
@@ -41,6 +46,10 @@ def _timeline_item_to_dict(item: TimelineItem) -> dict:
             "duration_seconds": version.duration_seconds,
             "trim_start": version.trim_start,
             "trim_end": version.trim_end,
+            "image_url": shot_version_image(version),
+            "status": "ready",
+            "prompt": build_shot_prompt(shot) if shot else None,
+            "created_at": version.created_at.isoformat() if version.created_at else None,
         }
         if version
         else None,

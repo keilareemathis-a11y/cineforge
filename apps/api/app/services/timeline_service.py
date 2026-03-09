@@ -6,6 +6,7 @@ from app.models.film_draft import FilmDraft
 from app.models.shot import Shot
 from app.models.shot_version import ShotVersion
 from app.models.timeline_item import TimelineItem
+from app.services.generated_visuals import shot_storyboard_image
 
 
 def create_film_draft_from_scenes(
@@ -41,6 +42,7 @@ def create_film_draft_from_scenes(
             )
             db.add(shot)
             db.flush()
+            shot.storyboard_image = shot_storyboard_image(shot)
 
             version = ShotVersion(
                 shot_id=shot.id,
@@ -51,6 +53,7 @@ def create_film_draft_from_scenes(
             )
             db.add(version)
             db.flush()
+            shot.active_version_id = version.id
 
             item = TimelineItem(
                 film_draft_id=draft.id,

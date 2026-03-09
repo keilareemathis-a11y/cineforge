@@ -8,6 +8,11 @@ from app.core.database import get_db
 from app.models.shot import Shot
 from app.models.shot_version import ShotVersion
 from app.models.timeline_item import TimelineItem
+from app.services.generated_visuals import (
+    build_shot_prompt,
+    shot_storyboard_image,
+    shot_version_image,
+)
 
 router = APIRouter()
 
@@ -56,9 +61,10 @@ def _shot_to_dict(shot: Shot) -> dict:
         "lens": shot.lens,
         "duration_estimate": shot.duration_estimate,
         "status": shot.status,
-        "storyboard_image": shot.storyboard_image,
+        "storyboard_image": shot_storyboard_image(shot),
         "notes": shot.notes,
         "image_prompt": shot.image_prompt,
+        "prompt": build_shot_prompt(shot),
         "active_version_id": shot.active_version_id,
         "created_at": shot.created_at.isoformat() if shot.created_at else None,
         "updated_at": shot.updated_at.isoformat() if shot.updated_at else None,
@@ -73,6 +79,9 @@ def _version_to_dict(version: ShotVersion) -> dict:
         "duration_seconds": version.duration_seconds,
         "trim_start": version.trim_start,
         "trim_end": version.trim_end,
+        "image_url": shot_version_image(version),
+        "status": "ready",
+        "prompt": build_shot_prompt(version.shot) if version.shot is not None else None,
         "created_at": version.created_at.isoformat() if version.created_at else None,
     }
 
@@ -96,6 +105,9 @@ def create_shot(data: ShotCreate, db: Session = Depends(get_db)):
         image_prompt=data.image_prompt,
     )
     db.add(shot)
+    db.flush()
+    if not shot.storyboard_image:
+        shot.storyboard_image = shot_storyboard_image(shot)
     db.commit()
     db.refresh(shot)
     return _shot_to_dict(shot)
@@ -119,6 +131,46 @@ def get_shot_versions(shot_id: str, db: Session = Depends(get_db)):
         .all()
     )
     return [_version_to_dict(v) for v in versions]
+
+
+@router.post("/{shot_id}/versions/{version_id}/select")
+def select_shot_version(shot_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Set a specific ShotVersion as active and propagate it to timeline items."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    version = (
+        db.query(ShotVersion)
+        .filter(ShotVersion.id == version_id, ShotVersion.shot_id == shot_id)
+        .first()
+    )
+    if version is None:
+        raise HTTPException(status_code=404, detail="ShotVersion not found")
+
+    shot.active_version_id = version.id
+
+    timeline_items = db.query(TimelineItem).filter(TimelineItem.shot_id == shot_id).all()
+    for item in timeline_items:
+        item.active_version_id = version.id
+
+    db.commit()
+
+    versions = (
+        db.query(ShotVersion)
+        .filter(ShotVersion.shot_id == shot_id)
+        .order_by(
+            desc(ShotVersion.version_number),
+            desc(ShotVersion.created_at),
+            desc(ShotVersion.id),
+        )
+        .all()
+    )
+    return {
+        "shot_id": shot.id,
+        "active_version_id": shot.active_version_id,
+        "versions": [_version_to_dict(v) for v in versions],
+    }
 
 
 @router.post("/{shot_id}/regenerate")
@@ -195,6 +247,11 @@ def update_shot(shot_id: str, data: ShotUpdate, db: Session = Depends(get_db)):
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(shot, field, value)
+
+    visual_fields = {"title", "shot_type", "description", "camera_angle", "lens", "image_prompt"}
+    if "storyboard_image" not in update_data and visual_fields.intersection(update_data):
+        if not shot.storyboard_image or shot.storyboard_image.startswith("data:image/"):
+            shot.storyboard_image = shot_storyboard_image(shot)
 
     db.commit()
     db.refresh(shot)
