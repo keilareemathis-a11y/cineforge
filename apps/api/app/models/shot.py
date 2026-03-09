@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, Text, DateTime, Integer, Float, ForeignKe
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+from app.models.shot_version import ShotVersion
 
 
 class Shot(Base):
@@ -30,7 +31,7 @@ class Shot(Base):
 
     versions = relationship(
         "ShotVersion",
-        foreign_keys="[ShotVersion.shot_id]",
+        foreign_keys=[ShotVersion.shot_id],
         back_populates="shot",
         cascade="all, delete-orphan",
     )
