@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.core.database import Base, get_db
 from app.models.Project import Project as ProjectModel
+from app.models.character import Character
 from app.models.film_draft import FilmDraft
 
 TEST_DATABASE_URL = "sqlite:///./test_shots.db"
@@ -199,6 +200,159 @@ class TestProjectRoutes:
         response = client.get("/api/projects/nonexistent-project")
         assert response.status_code == 404
         assert response.json()["detail"] == "Project not found"
+
+
+# ---------------------------------------------------------------------------
+# Characters
+# ---------------------------------------------------------------------------
+
+class TestCharacterRoutes:
+    def test_create_character(self):
+        response = client.post(
+            "/api/characters",
+            json={
+                "user_id": "user_1",
+                "name": "Ava",
+                "description": "Lead detective",
+                "reference_image_url": "https://example.com/ava.png",
+                "appearance_traits": {"hair": "black", "coat": "trench"},
+                "voice_profile": "calm",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == "user_1"
+        assert data["name"] == "Ava"
+        assert data["appearance_traits"]["coat"] == "trench"
+        assert "id" in data
+
+    def test_list_characters(self):
+        client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        client.post("/api/characters", json={"user_id": "user_2", "name": "Jon"})
+
+        response = client.get("/api/characters")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {character["name"] for character in data} == {"Ava", "Jon"}
+
+    def test_get_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.get(f"/api/characters/{character_id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == character_id
+
+    def test_get_character_not_found(self):
+        response = client.get("/api/characters/nonexistent-character")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+    def test_update_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.patch(
+            f"/api/characters/{character_id}",
+            json={"description": "Updated character", "voice_profile": "confident"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["description"] == "Updated character"
+        assert data["voice_profile"] == "confident"
+        assert data["name"] == "Ava"
+
+    def test_update_character_not_found(self):
+        response = client.patch("/api/characters/nonexistent-character", json={"name": "Missing"})
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+    def test_delete_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.delete(f"/api/characters/{character_id}")
+        assert response.status_code == 200
+        assert response.json()["message"] == "Character deleted"
+
+        get_response = client.get(f"/api/characters/{character_id}")
+        assert get_response.status_code == 404
+
+    def test_delete_character_not_found(self):
+        response = client.delete("/api/characters/nonexistent-character")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+
+# ---------------------------------------------------------------------------
+# Scenes
+# ---------------------------------------------------------------------------
+
+class TestSceneRoutes:
+    def test_create_scene(self):
+        db = TestingSessionLocal()
+        try:
+            character_one = Character(user_id="user_1", name="Ava")
+            character_two = Character(user_id="user_1", name="Jon")
+            db.add_all([character_one, character_two])
+            db.commit()
+            db.refresh(character_one)
+            db.refresh(character_two)
+        finally:
+            db.close()
+
+        response = client.post(
+            "/api/scenes",
+            json={
+                "project_id": "project_1",
+                "title": "Rooftop confrontation",
+                "environment": "city rooftop",
+                "lighting": "neon",
+                "weather": "rain",
+                "mood": "tense",
+                "character_ids": [character_one.id, character_two.id],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["project_id"] == "project_1"
+        assert data["title"] == "Rooftop confrontation"
+        assert set(data["character_ids"]) == {character_one.id, character_two.id}
+        assert "id" in data
+
+    def test_create_scene_character_not_found(self):
+        response = client.post(
+            "/api/scenes",
+            json={"project_id": "project_1", "title": "Missing cast", "character_ids": ["missing-character"]},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found: missing-character"
+
+    def test_list_scenes(self):
+        client.post("/api/scenes", json={"project_id": "project_1", "title": "Opening"})
+        client.post("/api/scenes", json={"project_id": "project_1", "title": "Finale"})
+
+        response = client.get("/api/scenes")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {scene["title"] for scene in data} == {"Opening", "Finale"}
+
+    def test_get_scene(self):
+        create_resp = client.post("/api/scenes", json={"project_id": "project_1", "title": "Opening"})
+        scene_id = create_resp.json()["id"]
+
+        response = client.get(f"/api/scenes/{scene_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == scene_id
+        assert data["title"] == "Opening"
+
+    def test_get_scene_not_found(self):
+        response = client.get("/api/scenes/nonexistent-scene")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Scene not found"
 
 
 # ---------------------------------------------------------------------------

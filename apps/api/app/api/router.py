@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 # Import route modules
+from .routes.characters import router as characters_router
 from .routes.projects import router as projects_router
 from .routes.scripts import router as scripts_router
 from .routes.storyboards import router as storyboards_router
@@ -15,6 +16,7 @@ from .routes.users import router as users_router
 router = APIRouter()
 
 # Include all route modules with appropriate prefixes
+router.include_router(characters_router, prefix='/characters', tags=['characters'])
 router.include_router(projects_router, prefix='/projects', tags=['projects'])
 router.include_router(scripts_router, prefix='/scripts', tags=['scripts'])
 router.include_router(storyboards_router, prefix='/storyboards', tags=['storyboards'])
