@@ -1,32 +1,31 @@
-from flask import Flask, request, jsonify
+from fastapi import APIRouter, HTTPException
 
-app = Flask(__name__)
+router = APIRouter()
 
 # In-memory storage for assets
 assets = {}
 next_id = 1
 
-@app.route('/upload', methods=['POST'])
+
+@router.post("/upload")
 def upload_asset():
     global next_id
-    file = request.files['file']
     asset_id = next_id
-    assets[asset_id] = file.filename  # This is just a stub implementation
+    assets[asset_id] = "uploaded_file"
     next_id += 1
-    return jsonify({'id': asset_id, 'filename': file.filename}), 201
+    return {"id": asset_id, "filename": "uploaded_file"}
 
-@app.route('/<int:id>', methods=['GET'])
-def get_asset(id):
+
+@router.get("/{id}")
+def get_asset(id: int):
     if id in assets:
-        return jsonify({'id': id, 'filename': assets[id]})
-    return jsonify({'error': 'Asset not found'}), 404
+        return {"id": id, "filename": assets[id]}
+    raise HTTPException(status_code=404, detail="Asset not found")
 
-@app.route('/<int:id>', methods=['DELETE'])
-def delete_asset(id):
+
+@router.delete("/{id}")
+def delete_asset(id: int):
     if id in assets:
         del assets[id]
-        return jsonify({'message': 'Asset deleted'}), 200
-    return jsonify({'error': 'Asset not found'}), 404
-
-if __name__ == '__main__':
-    app.run(debug=True)
+        return {"message": "Asset deleted"}
+    raise HTTPException(status_code=404, detail="Asset not found")

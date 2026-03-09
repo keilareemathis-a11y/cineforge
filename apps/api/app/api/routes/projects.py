@@ -1,34 +1,43 @@
-from flask import Blueprint, jsonify, request
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 
-projects_bp = Blueprint('projects', __name__)
+router = APIRouter()
 
 # Sample data structure to store projects
 projects = []
 
-@projects_bp.route('/projects', methods=['POST'])
-def create_project():
-    data = request.get_json()
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+@router.post("")
+def create_project(data: ProjectCreate):
     project_id = len(projects) + 1
-    project = {'id': project_id, 'name': data.get('name'), 'description': data.get('description')}
+    project = {"id": project_id, "name": data.name, "description": data.description}
     projects.append(project)
-    return jsonify(project), 201
+    return project
 
-@projects_bp.route('/projects', methods=['GET'])
+
+@router.get("")
 def get_projects():
-    return jsonify(projects), 200
+    return projects
 
-@projects_bp.route('/projects/<int:project_id>', methods=['PUT'])
-def update_project(project_id):
-    data = request.get_json()
+
+@router.put("/{project_id}")
+def update_project(project_id: int, data: ProjectCreate):
     for project in projects:
-        if project['id'] == project_id:
-            project['name'] = data.get('name', project['name'])
-            project['description'] = data.get('description', project['description'])
-            return jsonify(project), 200
-    return jsonify({'error': 'Project not found'}), 404
+        if project["id"] == project_id:
+            project["name"] = data.name if data.name is not None else project["name"]
+            project["description"] = data.description if data.description is not None else project["description"]
+            return project
+    raise HTTPException(status_code=404, detail="Project not found")
 
-@projects_bp.route('/projects/<int:project_id>', methods=['DELETE'])
-def delete_project(project_id):
+
+@router.delete("/{project_id}")
+def delete_project(project_id: int):
     global projects
-    projects = [project for project in projects if project['id'] != project_id]
-    return jsonify({'message': 'Project deleted'}), 204
+    projects = [p for p in projects if p["id"] != project_id]
+    return {"message": "Project deleted"}
