@@ -48,6 +48,9 @@ export interface Shot {
 export interface ShotVersion {
   id: string;
   shot_id: string;
+  duration_seconds: number;
+  trim_start: number;
+  trim_end?: number;
   image_url: string;
   video_url?: string;
   status: 'pending' | 'processing' | 'ready' | 'failed';

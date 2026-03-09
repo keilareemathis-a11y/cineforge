@@ -54,6 +54,8 @@ export async function regenerateShot(shotId: string): Promise<ShotVersionsRespon
     const newVersion = {
       id: `version-${shotId}-${Date.now()}`,
       shot_id: shotId,
+      duration_seconds: existing[0]?.duration_seconds ?? 5,
+      trim_start: 0,
       image_url: `https://picsum.photos/seed/${Date.now()}/640/360`,
       status: 'pending' as const,
       created_at: new Date().toISOString(),

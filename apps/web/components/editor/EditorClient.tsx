@@ -51,14 +51,43 @@ export default function EditorClient({ filmId }: EditorClientProps) {
     setState((s) => ({ ...s, status: 'saving' }));
     const vd = await selectVersion(shotId, versionId);
     setVersionsData(vd);
-    setState((s) => ({ ...s, activeVersionId: vd.active_version_id, selectedShotVersions: vd.versions, status: 'idle' }));
+    setState((s) => ({
+      ...s,
+      activeVersionId: vd.active_version_id,
+      selectedShotVersions: vd.versions,
+      status: 'idle',
+      timeline: s.timeline
+        ? {
+            ...s.timeline,
+            timeline_items: s.timeline.timeline_items.map((item) =>
+              item.shot.id === shotId
+                ? { ...item, shot: { ...item.shot, active_version_id: vd.active_version_id } }
+                : item
+            ),
+          }
+        : s.timeline,
+    }));
   };
 
   const handleRegenerate = async (shotId: string) => {
     setState((s) => ({ ...s, status: 'saving' }));
     const vd = await regenerateShot(shotId);
     setVersionsData(vd);
-    setState((s) => ({ ...s, selectedShotVersions: vd.versions, status: 'idle' }));
+    setState((s) => ({
+      ...s,
+      selectedShotVersions: vd.versions,
+      status: 'idle',
+      timeline: s.timeline
+        ? {
+            ...s.timeline,
+            timeline_items: s.timeline.timeline_items.map((item) =>
+              item.shot.id === shotId
+                ? { ...item, shot: { ...item.shot, active_version_id: vd.active_version_id } }
+                : item
+            ),
+          }
+        : s.timeline,
+    }));
   };
 
   const handleMove = async (itemId: string, direction: 'up' | 'down') => {

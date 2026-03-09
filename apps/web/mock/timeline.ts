@@ -55,6 +55,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-1a',
       shot_id: 'shot-1',
+      duration_seconds: 5,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot1a/640/360',
       status: 'ready',
       created_at: '2024-11-01T10:01:00Z',
@@ -62,6 +64,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-1b',
       shot_id: 'shot-1',
+      duration_seconds: 5,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot1b/640/360',
       status: 'ready',
       created_at: '2024-11-01T10:30:00Z',
@@ -71,6 +75,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-2a',
       shot_id: 'shot-2',
+      duration_seconds: 4,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot2a/640/360',
       status: 'ready',
       created_at: '2024-11-01T10:06:00Z',
@@ -80,6 +86,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-3a',
       shot_id: 'shot-3',
+      duration_seconds: 6,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot3a/640/360',
       status: 'ready',
       created_at: '2024-11-01T10:11:00Z',
@@ -87,6 +95,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-3b',
       shot_id: 'shot-3',
+      duration_seconds: 6,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot3b/640/360',
       status: 'ready',
       created_at: '2024-11-01T11:00:00Z',
@@ -96,6 +106,8 @@ export const mockVersions: Record<string, ShotVersion[]> = {
     {
       id: 'version-4a',
       shot_id: 'shot-4',
+      duration_seconds: 5,
+      trim_start: 0,
       image_url: 'https://picsum.photos/seed/shot4a/640/360',
       status: 'ready',
       created_at: '2024-11-01T10:16:00Z',
