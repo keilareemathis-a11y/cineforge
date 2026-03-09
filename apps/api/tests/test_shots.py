@@ -5,6 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.main import app
 from app.core.database import Base, get_db
+from app.models.Project import Project as ProjectModel
+from app.models.film_draft import FilmDraft
 
 TEST_DATABASE_URL = "sqlite:///./test_shots.db"
 
@@ -30,6 +32,27 @@ def setup_database():
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
+
+def create_project_and_draft(name="Test Project", title="Test Draft"):
+    """Helper: create a Project and FilmDraft directly in the test database."""
+    db = TestingSessionLocal()
+    try:
+        project = ProjectModel(name=name)
+        db.add(project)
+        db.flush()
+        draft = FilmDraft(project_id=project.id, title=title)
+        db.add(draft)
+        db.commit()
+        db.refresh(project)
+        db.refresh(draft)
+        return project.id, draft.id
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Existing tests (shots CRUD)
+# ---------------------------------------------------------------------------
 
 class TestCreateShot:
     def test_create_shot_minimal(self):
@@ -139,3 +162,327 @@ class TestGetShotsByScene:
         response = client.get("/api/scenes/scene_empty/shots")
         assert response.status_code == 200
         assert response.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Projects
+# ---------------------------------------------------------------------------
+
+class TestProjectRoutes:
+    def test_create_project(self):
+        response = client.post("/api/projects", json={"name": "My Film Project", "description": "Test desc"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "My Film Project"
+        assert data["description"] == "Test desc"
+        assert "id" in data
+
+    def test_create_project_minimal(self):
+        response = client.post("/api/projects", json={"name": "Minimal"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Minimal"
+
+    def test_get_project(self):
+        create_resp = client.post("/api/projects", json={"name": "Film Noir"})
+        project_id = create_resp.json()["id"]
+
+        response = client.get(f"/api/projects/{project_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == project_id
+        assert data["name"] == "Film Noir"
+
+    def test_get_project_not_found(self):
+        response = client.get("/api/projects/nonexistent-project")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Project not found"
+
+
+# ---------------------------------------------------------------------------
+# Shot active version behavior
+# ---------------------------------------------------------------------------
+
+class TestShotActiveVersion:
+    def test_shot_active_version_starts_null(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["active_version_id"] is None
+
+    def test_shot_active_version_set_after_regenerate(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        new_version_id = regen["new_version"]["id"]
+
+        shot = client.get(f"/api/shots/{shot_id}").json()
+        assert shot["active_version_id"] == new_version_id
+
+    def test_shot_active_version_updated_on_each_regenerate(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        second = client.post(f"/api/shots/{shot_id}/regenerate").json()
+
+        shot = client.get(f"/api/shots/{shot_id}").json()
+        assert shot["active_version_id"] == second["new_version"]["id"]
+        assert shot["active_version_id"] != first["new_version"]["id"]
+
+
+# ---------------------------------------------------------------------------
+# Version ordering
+# ---------------------------------------------------------------------------
+
+class TestShotVersions:
+    def test_get_versions_empty(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+        response = client.get(f"/api/shots/{shot_id}/versions")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_get_versions_ordering(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        client.post(f"/api/shots/{shot_id}/regenerate")
+        client.post(f"/api/shots/{shot_id}/regenerate")
+        client.post(f"/api/shots/{shot_id}/regenerate")
+
+        response = client.get(f"/api/shots/{shot_id}/versions")
+        assert response.status_code == 200
+        versions = response.json()
+        assert len(versions) == 3
+
+        version_numbers = [v["version_number"] for v in versions]
+        assert version_numbers == sorted(version_numbers, reverse=True)
+        assert version_numbers[0] == 3
+
+    def test_get_versions_not_found(self):
+        response = client.get("/api/shots/nonexistent/versions")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Shot not found"
+
+    def test_versions_do_not_modify_timeline_items(self):
+        """GET /versions must not modify any TimelineItem rows."""
+        _, draft_id = create_project_and_draft()
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        version_id = regen["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": version_id},
+        )
+
+        # Call GET versions multiple times
+        client.get(f"/api/shots/{shot_id}/versions")
+        client.get(f"/api/shots/{shot_id}/versions")
+
+        # Timeline item's active_version_id must be unchanged
+        timeline = client.get(f"/api/drafts/{draft_id}/timeline").json()
+        assert timeline["timeline_items"][0]["active_version_id"] == version_id
+
+
+# ---------------------------------------------------------------------------
+# Regenerate endpoint
+# ---------------------------------------------------------------------------
+
+class TestRegenerate:
+    def test_regenerate_creates_version(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        response = client.post(f"/api/shots/{shot_id}/regenerate")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["shot_id"] == shot_id
+        assert data["new_version"]["version_number"] == 1
+        assert data["active_version_id"] == data["new_version"]["id"]
+
+    def test_regenerate_increments_version_number(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        second = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        third = client.post(f"/api/shots/{shot_id}/regenerate").json()
+
+        assert first["new_version"]["version_number"] == 1
+        assert second["new_version"]["version_number"] == 2
+        assert third["new_version"]["version_number"] == 3
+
+    def test_regenerate_inherits_fields_from_previous(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        second = client.post(f"/api/shots/{shot_id}/regenerate").json()
+
+        assert second["new_version"]["duration_seconds"] == first["new_version"]["duration_seconds"]
+        assert second["new_version"]["trim_start"] == first["new_version"]["trim_start"]
+        assert second["new_version"]["trim_end"] == first["new_version"]["trim_end"]
+
+    def test_regenerate_propagates_to_timeline_items(self):
+        _, draft_id = create_project_and_draft()
+
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first_regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        first_version_id = first_regen["new_version"]["id"]
+
+        # Add shot to timeline with first version
+        timeline_resp = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": first_version_id},
+        )
+        assert timeline_resp.status_code == 200
+
+        # Regenerate → creates second version
+        second_regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        second_version_id = second_regen["new_version"]["id"]
+
+        # Timeline item must now reference the new version
+        timeline = client.get(f"/api/drafts/{draft_id}/timeline").json()
+        items = timeline["timeline_items"]
+        assert len(items) == 1
+        assert items[0]["active_version_id"] == second_version_id
+        assert items[0]["active_version"]["version_number"] == 2
+
+    def test_regenerate_propagates_to_multiple_timeline_items(self):
+        _, draft_id = create_project_and_draft()
+
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        v1_id = regen["new_version"]["id"]
+
+        # Add same shot twice at different positions
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": v1_id},
+        )
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 2, "active_version_id": v1_id},
+        )
+
+        second_regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        v2_id = second_regen["new_version"]["id"]
+
+        timeline = client.get(f"/api/drafts/{draft_id}/timeline").json()
+        for item in timeline["timeline_items"]:
+            assert item["active_version_id"] == v2_id
+
+    def test_regenerate_not_found(self):
+        response = client.post("/api/shots/nonexistent/regenerate")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Shot not found"
+
+
+# ---------------------------------------------------------------------------
+# Draft timeline endpoints
+# ---------------------------------------------------------------------------
+
+class TestDraftTimeline:
+    def test_create_timeline_item(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = shot_resp.json()["id"]
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        version_id = regen["new_version"]["id"]
+
+        response = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": version_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["shot_id"] == shot_id
+        assert data["film_draft_id"] == draft_id
+        assert data["active_version_id"] == version_id
+        assert data["position"] == 1
+
+    def test_create_timeline_item_without_version(self):
+        _, draft_id = create_project_and_draft()
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = shot_resp.json()["id"]
+
+        response = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["active_version_id"] is None
+
+    def test_get_timeline(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = shot_resp.json()["id"]
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        version_id = regen["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": version_id},
+        )
+
+        response = client.get(f"/api/drafts/{draft_id}/timeline")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["film_draft_id"] == draft_id
+        assert len(data["timeline_items"]) == 1
+        item = data["timeline_items"][0]
+        assert item["position"] == 1
+        assert item["shot_id"] == shot_id
+        assert item["active_version"]["version_number"] == 1
+
+    def test_get_timeline_ordered_by_position(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_a = client.post("/api/shots", json={"scene_id": "s1"}).json()["id"]
+        shot_b = client.post("/api/shots", json={"scene_id": "s1"}).json()["id"]
+        shot_c = client.post("/api/shots", json={"scene_id": "s1"}).json()["id"]
+
+        client.post(f"/api/drafts/{draft_id}/timeline-items", json={"shot_id": shot_c, "position": 3})
+        client.post(f"/api/drafts/{draft_id}/timeline-items", json={"shot_id": shot_a, "position": 1})
+        client.post(f"/api/drafts/{draft_id}/timeline-items", json={"shot_id": shot_b, "position": 2})
+
+        response = client.get(f"/api/drafts/{draft_id}/timeline")
+        assert response.status_code == 200
+        items = response.json()["timeline_items"]
+        positions = [i["position"] for i in items]
+        assert positions == [1, 2, 3]
+
+    def test_get_timeline_not_found(self):
+        response = client.get("/api/drafts/nonexistent/timeline")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Film draft not found"
+
+    def test_create_timeline_item_draft_not_found(self):
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = shot_resp.json()["id"]
+        response = client.post(
+            "/api/drafts/nonexistent/timeline-items",
+            json={"shot_id": shot_id, "position": 1},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Film draft not found"
+
+    def test_create_timeline_item_shot_not_found(self):
+        _, draft_id = create_project_and_draft()
+        response = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": "nonexistent", "position": 1},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Shot not found"
