@@ -1,31 +1,18 @@
-import uuid
-from sqlalchemy import Column, String, Text, DateTime, Integer, Float
+from sqlalchemy import Column, String, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from app.core.database import Base
-
+from apps.api.app.models.base import Base  # Adjust the import according to your project structure
 
 class Shot(Base):
-    """Immutable generated shot source material."""
+    __tablename__ = 'shots'
 
-    __tablename__ = "shots"
+    # Existing fields
+    # ... [other fields remain the same]
+    
+    active_version_id = Column(String, ForeignKey('shot_versions.id'))
+    active_version = relationship('ShotVersion', foreign_keys=[active_version_id])
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    scene_id = Column(String, nullable=False)
-    project_id = Column(String, nullable=True)
-    shot_number = Column(Integer, nullable=True)
-    title = Column(String, nullable=True)
-    shot_type = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    camera_angle = Column(String, nullable=True)
-    lens = Column(String, nullable=True)
-    duration_estimate = Column(Float, nullable=True)
-    status = Column(String, nullable=True, default="planned")
-    storyboard_image = Column(String, nullable=True)
-    notes = Column(Text, nullable=True)
-    image_prompt = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    versions = relationship('ShotVersion',
+                            foreign_keys='ShotVersion.shot_id',
+                            backref='shot')
 
-    versions = relationship("ShotVersion", back_populates="shot", cascade="all, delete-orphan")
-    timeline_items = relationship("TimelineItem", back_populates="shot")
+# Any other code or classes you have will go here...
