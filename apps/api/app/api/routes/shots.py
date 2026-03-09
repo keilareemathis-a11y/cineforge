@@ -150,10 +150,18 @@ def delete_shot(shot_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{shot_id}/versions")
 def get_shot_versions(shot_id: str, db: Session = Depends(get_db)):
-    """List all versions for a shot."""
+    """List all versions for a shot. Normalizes active_version_id to the latest version
+    if it is currently unset but versions exist. Does not propagate to TimelineItems."""
     shot = db.query(Shot).filter(Shot.id == shot_id).first()
     if shot is None:
         raise HTTPException(status_code=404, detail="Shot not found")
+
+    if shot.active_version_id is None and shot.versions:
+        latest = max(shot.versions, key=lambda v: v.version_number)
+        shot.active_version_id = latest.id
+        db.commit()
+        db.refresh(shot)
+
     return {
         "shot_id": shot_id,
         "active_version_id": shot.active_version_id,
@@ -167,7 +175,8 @@ def regenerate_shot(
     data: Optional[RegenerateRequest] = Body(default=None),
     db: Session = Depends(get_db),
 ):
-    """Queue a new version of a shot for regeneration."""
+    """Queue a new version for regeneration, make it the active version immediately,
+    and propagate the new active_version_id to all timeline items for this shot."""
     if data is None:
         data = RegenerateRequest()
     shot = db.query(Shot).filter(Shot.id == shot_id).first()
@@ -183,12 +192,19 @@ def regenerate_shot(
         style=data.style,
     )
     db.add(new_version)
+    db.flush()  # persist so new_version.id is available for FK references
+
+    shot.active_version_id = new_version.id
+    for item in db.query(TimelineItem).filter(TimelineItem.shot_id == shot_id).all():
+        item.active_version_id = new_version.id
+
     db.commit()
     db.refresh(new_version)
 
     return {
         "status": "queued",
         "shot_id": shot_id,
+        "active_version_id": new_version.id,
         "new_version": _shot_version_to_dict(new_version),
     }
 

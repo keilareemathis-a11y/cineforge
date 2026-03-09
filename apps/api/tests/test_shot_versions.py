@@ -127,6 +127,55 @@ class TestGetShotVersions:
         assert data["versions"][0]["status"] == "ready"
         assert data["versions"][0]["image_url"] == "https://example.com/img.png"
 
+    def test_normalizes_active_version_id_when_unset(self):
+        """If active_version_id is None but versions exist, GET /versions auto-sets it
+        to the latest version and persists the change to the shot (no TimelineItem touch)."""
+        shot = _create_shot()
+        db = TestingSessionLocal()
+        try:
+            for n in range(1, 4):
+                v = ShotVersion(shot_id=shot["id"], version_number=n, status="ready")
+                db.add(v)
+            db.commit()
+        finally:
+            db.close()
+
+        # shot has no active_version_id at this point
+        resp = client.get(f"/api/shots/{shot['id']}/versions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["active_version_id"] is not None
+        # should be the version with the highest version_number (v3)
+        highest_v = max(data["versions"], key=lambda v: v["version_number"])
+        assert data["active_version_id"] == highest_v["id"]
+
+        # normalization must be persisted to the shot
+        shot_resp = client.get(f"/api/shots/{shot['id']}")
+        assert shot_resp.json()["active_version_id"] == data["active_version_id"]
+
+    def test_normalization_does_not_touch_timeline_items(self):
+        """GET /versions normalization must not update TimelineItem rows."""
+        shot = _create_shot()
+        db = TestingSessionLocal()
+        try:
+            v = ShotVersion(shot_id=shot["id"], version_number=1, status="ready")
+            db.add(v)
+            db.flush()
+            item = _create_timeline_item(db, shot["id"])
+            item_id = item.id
+            db.commit()
+        finally:
+            db.close()
+
+        client.get(f"/api/shots/{shot['id']}/versions")
+
+        db2 = TestingSessionLocal()
+        try:
+            item_obj = db2.query(TimelineItem).filter(TimelineItem.id == item_id).first()
+            assert item_obj.active_version_id is None
+        finally:
+            db2.close()
+
     def test_returns_all_versions(self):
         shot = _create_shot()
         db = TestingSessionLocal()
@@ -164,6 +213,42 @@ class TestRegenerateShot:
         assert data["new_version"]["shot_id"] == shot["id"]
         assert "id" in data["new_version"]
 
+    def test_sets_new_version_as_active_immediately(self):
+        """regenerate must make the new queued version active on the shot right away."""
+        shot = _create_shot()
+        resp = client.post(f"/api/shots/{shot['id']}/regenerate", json={})
+        data = resp.json()
+        new_version_id = data["new_version"]["id"]
+
+        assert data["active_version_id"] == new_version_id
+
+        shot_resp = client.get(f"/api/shots/{shot['id']}")
+        assert shot_resp.json()["active_version_id"] == new_version_id
+
+    def test_regenerate_propagates_to_timeline_items(self):
+        """regenerate must update all TimelineItem.active_version_id for this shot."""
+        shot = _create_shot()
+        db = TestingSessionLocal()
+        try:
+            item1 = _create_timeline_item(db, shot["id"])
+            item2 = _create_timeline_item(db, shot["id"])
+            item1_id = item1.id
+            item2_id = item2.id
+        finally:
+            db.close()
+
+        resp = client.post(f"/api/shots/{shot['id']}/regenerate", json={})
+        new_version_id = resp.json()["new_version"]["id"]
+
+        db2 = TestingSessionLocal()
+        try:
+            updated1 = db2.query(TimelineItem).filter(TimelineItem.id == item1_id).first()
+            updated2 = db2.query(TimelineItem).filter(TimelineItem.id == item2_id).first()
+            assert updated1.active_version_id == new_version_id
+            assert updated2.active_version_id == new_version_id
+        finally:
+            db2.close()
+
     def test_version_number_increments(self):
         shot = _create_shot()
         resp1 = client.post(f"/api/shots/{shot['id']}/regenerate", json={})
@@ -186,7 +271,9 @@ class TestRegenerateShot:
         shot = _create_shot()
         resp = client.post(f"/api/shots/{shot['id']}/regenerate")
         assert resp.status_code == 200
-        assert resp.json()["new_version"]["status"] == "queued"
+        data = resp.json()
+        assert data["new_version"]["status"] == "queued"
+        assert data["active_version_id"] == data["new_version"]["id"]
 
     def test_version_appears_in_get_versions(self):
         shot = _create_shot()
