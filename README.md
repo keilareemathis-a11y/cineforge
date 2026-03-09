@@ -1,23 +1,38 @@
 # CineForge
 
-> AI filmmaking studio where creators generate shots, manage shot versions, build timelines, and export films.
+>CineForge is an experimental AI filmmaking backend that generates shots, versions them, lets you edit them in a timeline, and renders a finished film.
+
+The system models a non-linear editing workflow similar to professional editors, but with AI-generated footage.
 
 ---
 
-## What It Is
+Architecture
 
-CineForge is an AI filmmaking studio that lets creators generate shots,
-manage shot versions, build film drafts with a timeline editor, and export
-finished films — all from a single platform.
+The platform follows this pipeline:
 
-## Key Features
+Project
+   ↓
+Scene
+   ↓
+Shot
+   ↓
+ShotVersion
+   ↓
+TimelineItem
+   ↓
+FilmDraft
+   ↓
+Rendered Film
 
-- AI shot generation
-- Shot version history with non-destructive regeneration
-- Timeline editor (drag shots into a draft, reorder, trim)
-- Regenerate shots without breaking the timeline
-- Film export
+This allows:
 
+shot regeneration
+
+non-destructive editing
+
+timeline-based film assembly
+
+MP4 rendering
 ## Data Model
 
 ```
