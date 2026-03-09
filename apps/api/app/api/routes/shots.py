@@ -38,6 +38,7 @@ class ShotUpdate(BaseModel):
     storyboard_image: Optional[str] = None
     notes: Optional[str] = None
     image_prompt: Optional[str] = None
+    active_version_id: Optional[str] = None
 
 
 def _shot_to_dict(shot: Shot) -> dict:
@@ -56,6 +57,7 @@ def _shot_to_dict(shot: Shot) -> dict:
         "storyboard_image": shot.storyboard_image,
         "notes": shot.notes,
         "image_prompt": shot.image_prompt,
+        "active_version_id": shot.active_version_id,
         "created_at": shot.created_at.isoformat() if shot.created_at else None,
         "updated_at": shot.updated_at.isoformat() if shot.updated_at else None,
     }

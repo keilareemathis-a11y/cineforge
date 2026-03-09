@@ -18,5 +18,5 @@ class ShotVersion(Base):
     trim_end = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    shot = relationship("Shot", back_populates="versions")
+    shot = relationship("Shot", back_populates="versions", foreign_keys=[shot_id])
     timeline_items = relationship("TimelineItem", back_populates="active_version")
