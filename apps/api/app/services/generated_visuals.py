@@ -1,6 +1,9 @@
 import hashlib
 from urllib.parse import quote
 
+TEXT_START_Y = 146
+TEXT_LINE_HEIGHT = 28
+
 
 def build_shot_prompt(shot) -> str:
     """Build a human-readable prompt for generated shot visuals."""
@@ -25,7 +28,7 @@ def generate_storyboard_image(prompt: str, seed: str, label: str = "Generated vi
     prompt_lines = _wrap_text(prompt, 34)[:4]
 
     prompt_svg = "".join(
-        f'<text x="32" y="{146 + (index * 28)}" fill="#f8f8ff" font-size="22" font-family="Arial, sans-serif">{_escape_xml(line)}</text>'
+        f'<text x="32" y="{TEXT_START_Y + (index * TEXT_LINE_HEIGHT)}" fill="#f8f8ff" font-size="22" font-family="Arial, sans-serif">{_escape_xml(line)}</text>'
         for index, line in enumerate(prompt_lines)
     )
 
