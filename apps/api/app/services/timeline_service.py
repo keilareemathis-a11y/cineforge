@@ -7,6 +7,7 @@ from app.models.shot import Shot
 from app.models.shot_version import ShotVersion
 from app.models.timeline_item import TimelineItem
 from app.services.generated_visuals import shot_storyboard_image
+from app.services.video_generation import ensure_shot_version_video
 
 
 def create_film_draft_from_scenes(
@@ -47,12 +48,15 @@ def create_film_draft_from_scenes(
             version = ShotVersion(
                 shot_id=shot.id,
                 version_number=1,
-                duration_seconds=shot_data.get("duration_seconds") or 0.0,
+                duration_seconds=shot_data.get("duration_seconds") or 1.0,
                 trim_start=0.0,
                 trim_end=None,
+                provider=shot_data.get("provider", "runway"),
+                status="ready",
             )
             db.add(version)
             db.flush()
+            ensure_shot_version_video(version)
             shot.active_version_id = version.id
 
             item = TimelineItem(

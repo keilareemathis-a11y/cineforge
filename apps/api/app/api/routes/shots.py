@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.services.generated_visuals import (
     shot_storyboard_image,
     shot_version_image,
 )
+from app.services.video_generation import ensure_shot_version_video, shot_version_video_path, shot_version_video_url
 
 router = APIRouter()
 
@@ -48,6 +50,10 @@ class ShotUpdate(BaseModel):
     image_prompt: Optional[str] = None
 
 
+class ShotRegenerateRequest(BaseModel):
+    provider: Optional[str] = "runway"
+
+
 def _shot_to_dict(shot: Shot) -> dict:
     return {
         "id": shot.id,
@@ -72,6 +78,7 @@ def _shot_to_dict(shot: Shot) -> dict:
 
 
 def _version_to_dict(version: ShotVersion) -> dict:
+    ensure_shot_version_video(version)
     return {
         "id": version.id,
         "shot_id": version.shot_id,
@@ -80,7 +87,9 @@ def _version_to_dict(version: ShotVersion) -> dict:
         "trim_start": version.trim_start,
         "trim_end": version.trim_end,
         "image_url": shot_version_image(version),
-        "status": "ready",
+        "video_url": shot_version_video_url(version.shot_id, version.id),
+        "status": version.status,
+        "provider": version.provider,
         "prompt": build_shot_prompt(version.shot) if version.shot is not None else None,
         "created_at": version.created_at.isoformat() if version.created_at else None,
     }
@@ -174,7 +183,9 @@ def select_shot_version(shot_id: str, version_id: str, db: Session = Depends(get
 
 
 @router.post("/{shot_id}/regenerate")
-def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
+def regenerate_shot(
+    shot_id: str, data: Optional[ShotRegenerateRequest] = None, db: Session = Depends(get_db)
+):
     """Create a new ShotVersion, increment version_number, propagate active_version_id to timeline items."""
     shot = db.query(Shot).filter(Shot.id == shot_id).first()
     if shot is None:
@@ -195,7 +206,7 @@ def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
         trim_end = prev_version.trim_end
     else:
         new_version_number = 1
-        duration_seconds = 0.0
+        duration_seconds = 1.0
         trim_start = 0.0
         trim_end = None
 
@@ -205,9 +216,12 @@ def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
         duration_seconds=duration_seconds,
         trim_start=trim_start,
         trim_end=trim_end,
+        provider=(data.provider if data and data.provider else "runway"),
+        status="ready",
     )
     db.add(new_version)
     db.flush()
+    ensure_shot_version_video(new_version)
 
     # Set Shot.active_version_id to the new version
     shot.active_version_id = new_version.id
@@ -226,6 +240,24 @@ def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
         "active_version_id": shot.active_version_id,
         "new_version": _version_to_dict(new_version),
     }
+
+
+@router.get("/{shot_id}/versions/{version_id}/video")
+def get_shot_version_video(shot_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Serve the generated MP4 clip for a shot version."""
+    version = (
+        db.query(ShotVersion)
+        .filter(ShotVersion.id == version_id, ShotVersion.shot_id == shot_id)
+        .first()
+    )
+    if version is None:
+        raise HTTPException(status_code=404, detail="ShotVersion not found")
+
+    video_path = shot_version_video_path(version.id)
+    if not video_path.exists():
+        ensure_shot_version_video(version)
+
+    return FileResponse(path=str(video_path), media_type="video/mp4", filename=f"{version_id}.mp4")
 
 
 @router.get("/{shot_id}")

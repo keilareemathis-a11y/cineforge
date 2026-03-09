@@ -9,6 +9,7 @@ from .routes.scenes import router as scenes_router
 from .routes.films import router as films_router
 from .routes.shots import router as shots_router
 from .routes.drafts import router as drafts_router
+from .routes.users import router as users_router
 
 # Create the main router
 router = APIRouter()
@@ -22,3 +23,4 @@ router.include_router(scenes_router, prefix='/scenes', tags=['scenes'])
 router.include_router(films_router, prefix='/films', tags=['films'])
 router.include_router(shots_router, prefix='/shots', tags=['shots'])
 router.include_router(drafts_router, prefix='/drafts', tags=['drafts'])
+router.include_router(users_router, prefix='/users', tags=['users'])

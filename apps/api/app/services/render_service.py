@@ -1,9 +1,9 @@
-import hashlib
-import os
 import tempfile
 from pathlib import Path
 
-from moviepy import ColorClip, concatenate_videoclips
+from moviepy import VideoFileClip, concatenate_videoclips
+
+from app.services.video_generation import ensure_shot_version_video
 
 
 RENDER_ROOT = Path(tempfile.gettempdir()) / "cineforge" / "renders"
@@ -25,9 +25,17 @@ def render_film_timeline(draft) -> dict:
             if version is None:
                 raise ValueError(f"Timeline item {item.id} has no active version")
 
+            video_path = ensure_shot_version_video(version)
             duration = _effective_duration(item, version)
-            color = _clip_color(f"{version.id}:{version.version_number}")
-            clips.append(ColorClip(size=(1280, 720), color=color, duration=duration))
+            trim_start = item.trim_start if item.trim_start is not None else version.trim_start or 0.0
+            source_clip = VideoFileClip(str(video_path))
+            source_duration = source_clip.duration or duration
+            trim_end = min(trim_start + duration, source_duration)
+            if trim_end <= trim_start:
+                trim_start = 0.0
+                trim_end = max(source_duration, 0.2)
+            clip = source_clip.subclipped(trim_start, trim_end)
+            clips.append(clip)
 
         final_clip = concatenate_videoclips(clips, method="compose")
         final_clip.write_videofile(
@@ -77,8 +85,3 @@ def _effective_duration(item, version) -> float:
         duration = base_duration - trim_start
 
     return max(duration, 0.2)
-
-
-def _clip_color(seed: str) -> tuple[int, int, int]:
-    digest = hashlib.sha256(seed.encode("utf-8")).digest()
-    return tuple(max(channel, 48) for channel in digest[:3])

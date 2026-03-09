@@ -9,6 +9,7 @@ from app.models.timeline_item import TimelineItem
 from app.models.shot import Shot
 from app.models.shot_version import ShotVersion
 from app.services.generated_visuals import build_shot_prompt, shot_storyboard_image, shot_version_image
+from app.services.video_generation import ensure_shot_version_video, shot_version_video_url
 
 router = APIRouter()
 
@@ -22,12 +23,17 @@ class TimelineItemCreate(BaseModel):
 def _timeline_item_to_dict(item: TimelineItem) -> dict:
     shot = item.shot
     version = item.active_version
+    if version is not None:
+        ensure_shot_version_video(version)
     return {
         "timeline_item_id": item.id,
         "position": item.position,
         "film_draft_id": item.film_draft_id,
         "shot_id": item.shot_id,
         "active_version_id": item.active_version_id,
+        "duration_seconds": item.duration_seconds if item.duration_seconds is not None else version.duration_seconds if version else None,
+        "trim_start": item.trim_start,
+        "trim_end": item.trim_end,
         "shot": {
             "shot_id": shot.id,
             "shot_type": shot.shot_type,
@@ -47,7 +53,9 @@ def _timeline_item_to_dict(item: TimelineItem) -> dict:
             "trim_start": version.trim_start,
             "trim_end": version.trim_end,
             "image_url": shot_version_image(version),
-            "status": "ready",
+            "video_url": shot_version_video_url(version.shot_id, version.id),
+            "status": version.status,
+            "provider": version.provider,
             "prompt": build_shot_prompt(shot) if shot else None,
             "created_at": version.created_at.isoformat() if version.created_at else None,
         }

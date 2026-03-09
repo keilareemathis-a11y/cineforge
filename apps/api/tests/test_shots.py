@@ -402,6 +402,24 @@ class TestRegenerate:
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
 
+    def test_regenerate_creates_provider_backed_clip(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        response = client.post(
+            f"/api/shots/{shot_id}/regenerate",
+            json={"provider": "pika"},
+        )
+        assert response.status_code == 200
+        version = response.json()["new_version"]
+        assert version["provider"] == "pika"
+        assert version["video_url"] == f"/api/shots/{shot_id}/versions/{version['id']}/video"
+
+        video_response = client.get(version["video_url"])
+        assert video_response.status_code == 200
+        assert video_response.headers["content-type"] == "video/mp4"
+        assert len(video_response.content) > 0
+
 
 class TestSelectVersion:
     def test_select_version_updates_shot_and_timeline(self):
@@ -564,3 +582,84 @@ class TestFilmRender:
         assert video_response.status_code == 200
         assert video_response.headers["content-type"] == "video/mp4"
         assert len(video_response.content) > 0
+
+    def test_timeline_reorder_and_trim_update(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_a = client.post("/api/shots", json={"scene_id": "scene_1"}).json()["id"]
+        shot_b = client.post("/api/shots", json={"scene_id": "scene_1"}).json()["id"]
+        version_a = client.post(f"/api/shots/{shot_a}/regenerate").json()["new_version"]["id"]
+        version_b = client.post(f"/api/shots/{shot_b}/regenerate").json()["new_version"]["id"]
+
+        first = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_a, "position": 0, "active_version_id": version_a},
+        ).json()
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_b, "position": 1, "active_version_id": version_b},
+        )
+
+        reorder = client.post(
+            f"/api/films/{draft_id}/timeline/reorder",
+            json={"item_id": first["timeline_item_id"], "new_position": 1},
+        )
+        assert reorder.status_code == 200
+        reordered_items = reorder.json()["timeline_items"]
+        assert reordered_items[1]["timeline_item_id"] == first["timeline_item_id"]
+
+        patch = client.patch(
+            f"/api/films/{draft_id}/timeline/{first['timeline_item_id']}",
+            json={"trim_start": 0.1, "trim_end": 0.4},
+        )
+        assert patch.status_code == 200
+        patched_item = next(
+            item for item in patch.json()["timeline_items"] if item["timeline_item_id"] == first["timeline_item_id"]
+        )
+        assert patched_item["trim_start"] == 0.1
+        assert patched_item["trim_end"] == 0.4
+
+    def test_publish_creates_public_film_and_creator_data(self):
+        project_id, draft_id = create_project_and_draft(name="Nova Frames", title="Launch Cut")
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Launch sequence"})
+        shot_id = shot_resp.json()["id"]
+        version_id = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 0, "active_version_id": version_id},
+        )
+
+        publish_response = client.post(
+            "/api/films/publish",
+            json={"draft_id": draft_id, "tags": ["sci-fi", "launch"]},
+        )
+        assert publish_response.status_code == 200
+        film = publish_response.json()
+        assert film["id"] == draft_id
+        assert film["video_url"] == f"/api/films/{draft_id}/rendered"
+        assert film["creator"]["id"] == project_id
+        assert film["creator"]["handle"] == "nova-frames"
+        assert film["tags"] == ["sci-fi", "launch"]
+
+        films_response = client.get("/api/films?sort=trending")
+        assert films_response.status_code == 200
+        assert films_response.json()[0]["id"] == draft_id
+
+        creator_response = client.get("/api/users/@nova-frames")
+        assert creator_response.status_code == 200
+        creator = creator_response.json()
+        assert creator["id"] == project_id
+        assert creator["films"][0]["id"] == draft_id
+
+        like_response = client.post(f"/api/films/{draft_id}/like")
+        assert like_response.status_code == 200
+        assert like_response.json()["like_count"] == 1
+
+        support_response = client.post(
+            f"/api/users/{project_id}/support",
+            json={"amount_cents": 500},
+        )
+        assert support_response.status_code == 200
+        assert support_response.json()["clientSecret"] == f"support_{project_id}_500"

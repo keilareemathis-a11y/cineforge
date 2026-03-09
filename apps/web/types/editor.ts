@@ -10,6 +10,7 @@ export interface EditorState {
   selectedShotVersions: ShotVersion[];
   activeVersionId: string | null;
   renderedVideoUrl: string | null;
+  publishedFilmId: string | null;
   status: EditorStatus;
   error: string | null;
 }
