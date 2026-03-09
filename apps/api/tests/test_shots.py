@@ -279,6 +279,22 @@ class TestCharacterRoutes:
         get_response = client.get(f"/api/characters/{character_id}")
         assert get_response.status_code == 404
 
+    def test_delete_character_with_scene_reference(self):
+        character_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = character_resp.json()["id"]
+        scene_resp = client.post(
+            "/api/scenes",
+            json={"project_id": "project_1", "title": "Opening", "character_ids": [character_id]},
+        )
+        scene_id = scene_resp.json()["id"]
+
+        delete_response = client.delete(f"/api/characters/{character_id}")
+        assert delete_response.status_code == 200
+
+        scene_response = client.get(f"/api/scenes/{scene_id}")
+        assert scene_response.status_code == 200
+        assert scene_response.json()["character_ids"] == []
+
     def test_delete_character_not_found(self):
         response = client.delete("/api/characters/nonexistent-character")
         assert response.status_code == 404

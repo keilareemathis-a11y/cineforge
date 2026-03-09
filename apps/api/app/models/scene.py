@@ -1,18 +1,11 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Table
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
-
-
-scene_characters = Table(
-    "scene_characters",
-    Base.metadata,
-    Column("scene_id", String, ForeignKey("scenes.id"), primary_key=True),
-    Column("character_id", String, ForeignKey("characters.id"), primary_key=True),
-)
+from app.models.associations import scene_characters
 
 
 class Scene(Base):

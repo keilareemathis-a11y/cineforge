@@ -84,7 +84,6 @@ def delete_character(character_id: str, db: Session = Depends(get_db)):
     if character is None:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    character.scenes = []
     db.delete(character)
     db.commit()
     return {"message": "Character deleted"}

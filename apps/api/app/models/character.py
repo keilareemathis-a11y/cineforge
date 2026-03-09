@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
-from app.models.scene import scene_characters
+from app.models.associations import scene_characters
 
 
 class Character(Base):
