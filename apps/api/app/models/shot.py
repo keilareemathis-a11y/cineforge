@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, Integer, Float
+from sqlalchemy import Column, String, Text, DateTime, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -27,5 +27,21 @@ class Shot(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    versions = relationship("ShotVersion", back_populates="shot", cascade="all, delete-orphan")
+    active_version_id = Column(
+        String,
+        ForeignKey("shot_versions.id", use_alter=True, name="fk_shots_active_version_id"),
+        nullable=True,
+    )
+
+    versions = relationship(
+        "ShotVersion",
+        back_populates="shot",
+        foreign_keys="[ShotVersion.shot_id]",
+        cascade="all, delete-orphan",
+    )
+    active_version = relationship(
+        "ShotVersion",
+        foreign_keys="[Shot.active_version_id]",
+        post_update=True,
+    )
     timeline_items = relationship("TimelineItem", back_populates="shot")
