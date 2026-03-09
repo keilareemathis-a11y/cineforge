@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.shot import Shot
+from app.models.shot_version import ShotVersion
+from app.models.timeline_item import TimelineItem
 
 router = APIRouter()
 
@@ -41,6 +43,11 @@ class ShotUpdate(BaseModel):
     active_version_id: Optional[str] = None
 
 
+class RegenerateRequest(BaseModel):
+    prompt: Optional[str] = None
+    style: Optional[str] = None
+
+
 def _shot_to_dict(shot: Shot) -> dict:
     return {
         "id": shot.id,
@@ -60,6 +67,23 @@ def _shot_to_dict(shot: Shot) -> dict:
         "active_version_id": shot.active_version_id,
         "created_at": shot.created_at.isoformat() if shot.created_at else None,
         "updated_at": shot.updated_at.isoformat() if shot.updated_at else None,
+    }
+
+
+def _shot_version_to_dict(version: ShotVersion) -> dict:
+    return {
+        "id": version.id,
+        "shot_id": version.shot_id,
+        "version_number": version.version_number,
+        "status": version.status,
+        "duration_seconds": version.duration_seconds,
+        "trim_start": version.trim_start,
+        "trim_end": version.trim_end,
+        "image_url": version.image_url,
+        "video_url": version.video_url,
+        "prompt": version.prompt,
+        "style": version.style,
+        "created_at": version.created_at.isoformat() if version.created_at else None,
     }
 
 
@@ -122,3 +146,87 @@ def delete_shot(shot_id: str, db: Session = Depends(get_db)):
     db.delete(shot)
     db.commit()
     return {"message": "Shot deleted"}
+
+
+@router.get("/{shot_id}/versions")
+def get_shot_versions(shot_id: str, db: Session = Depends(get_db)):
+    """List all versions for a shot."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    return {
+        "shot_id": shot_id,
+        "active_version_id": shot.active_version_id,
+        "versions": [_shot_version_to_dict(v) for v in shot.versions],
+    }
+
+
+@router.post("/{shot_id}/regenerate")
+def regenerate_shot(
+    shot_id: str,
+    data: Optional[RegenerateRequest] = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    """Queue a new version of a shot for regeneration."""
+    if data is None:
+        data = RegenerateRequest()
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    existing_count = db.query(ShotVersion).filter(ShotVersion.shot_id == shot_id).count()
+    new_version = ShotVersion(
+        shot_id=shot_id,
+        version_number=existing_count + 1,
+        status="queued",
+        prompt=data.prompt,
+        style=data.style,
+    )
+    db.add(new_version)
+    db.commit()
+    db.refresh(new_version)
+
+    return {
+        "status": "queued",
+        "shot_id": shot_id,
+        "new_version": _shot_version_to_dict(new_version),
+    }
+
+
+@router.post("/{shot_id}/versions/{version_id}/select")
+def select_shot_version(shot_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Select a version as the active version, propagating to all timeline items."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    version = db.query(ShotVersion).filter(
+        ShotVersion.id == version_id,
+        ShotVersion.shot_id == shot_id,
+    ).first()
+    if version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    if version.status in ("queued", "processing"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Version is not ready (status: {version.status})",
+        )
+    if version.status == "failed":
+        raise HTTPException(status_code=400, detail="Cannot select a failed version")
+
+    if not version.image_url:
+        raise HTTPException(status_code=400, detail="Version has no rendered assets")
+
+    shot.active_version_id = version_id
+    timeline_items = db.query(TimelineItem).filter(TimelineItem.shot_id == shot_id).all()
+    for item in timeline_items:
+        item.active_version_id = version_id
+
+    db.commit()
+
+    return {
+        "status": "selected",
+        "shot_id": shot_id,
+        "active_version_id": version_id,
+    }
