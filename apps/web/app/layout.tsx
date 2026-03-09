@@ -1,12 +1,11 @@
 import './globals.css';
-import type { Metadata } from 'next';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'CineForge',
-  description: 'Create and discover AI-powered short films',
+  description: 'An application for film enthusiasts',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>{children}</body>
