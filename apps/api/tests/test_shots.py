@@ -413,3 +413,12 @@ class TestRegenerateShot:
         response = client.post("/api/shots/nonexistent-id/regenerate")
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
+
+    def test_regenerate_accepts_no_body(self):
+        """POST /regenerate must succeed with no JSON body at all."""
+        create_resp = client.post("/api/shots", json={"scene_id": "scene_1", "duration_estimate": 3.0})
+        shot_id = create_resp.json()["id"]
+
+        response = client.post(f"/api/shots/{shot_id}/regenerate")
+        assert response.status_code == 200
+        assert response.json()["active_version_id"] is not None

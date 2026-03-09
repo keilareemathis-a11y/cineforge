@@ -36,12 +36,12 @@ class Shot(Base):
     versions = relationship(
         "ShotVersion",
         back_populates="shot",
-        foreign_keys="[ShotVersion.shot_id]",
+        foreign_keys="ShotVersion.shot_id",
         cascade="all, delete-orphan",
     )
     active_version = relationship(
         "ShotVersion",
-        foreign_keys="[Shot.active_version_id]",
+        foreign_keys=[active_version_id],
         post_update=True,
     )
     timeline_items = relationship("TimelineItem", back_populates="shot")
