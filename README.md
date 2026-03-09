@@ -8,24 +8,22 @@ Go from prompt or script → storyboard → AI-generated scenes → published sh
 
 ## What It Is
 
-CineForge is an open platform where independent creators use AI to write, visualize, and publish short films. Anyone can watch films on the homepage, follow creators, and support them directly.
+CineForge is an AI filmmaking tool that lets creators generate shots, 
+manage shot versions, build film drafts, and export finished films.
 
 ## Key Features
 
-- **Create** – Write a prompt or script; CineForge generates a storyboard and shot-by-shot visuals
-- **Edit** – Rearrange timeline items, swap shot versions, adjust durations, regenerate any shot
-- **Publish** – One click to publish; the film appears on your creator profile and the homepage
-- **Discover** – Browse trending films, new releases, and popular creators
-- **Support** – Tip creators directly ($1 / $3 / $5) via Stripe
-
+- • AI shot generation
+• Shot version history
+• Timeline editor
+• Regenerate shots without breaking the timeline
+• Film export
 ## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 14 (App Router), TypeScript, React 18 |
-| Backend | Python, FastAPI |
-| Database | PostgreSQL (via SQLAlchemy / Alembic) |
-| Infrastructure | Docker Compose |
+Project
+ └ FilmDraft
+     └ TimelineItem
+         └ Shot
+             └ ShotVersion
 
 ## Project Structure
 
