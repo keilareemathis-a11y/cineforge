@@ -8,6 +8,7 @@ from .routes.assets import router as assets_router
 from .routes.scenes import router as scenes_router
 from .routes.films import router as films_router
 from .routes.shots import router as shots_router
+from .routes.drafts import router as drafts_router
 
 # Create the main router
 router = APIRouter()
@@ -20,3 +21,4 @@ router.include_router(assets_router, prefix='/assets', tags=['assets'])
 router.include_router(scenes_router, prefix='/scenes', tags=['scenes'])
 router.include_router(films_router, prefix='/films', tags=['films'])
 router.include_router(shots_router, prefix='/shots', tags=['shots'])
+router.include_router(drafts_router, prefix='/drafts', tags=['drafts'])

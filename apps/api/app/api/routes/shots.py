@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, text
 
 from app.core.database import get_db
 from app.models.shot import Shot
+from app.models.shot_version import ShotVersion
+from app.models.timeline_item import TimelineItem
 
 router = APIRouter()
 
@@ -56,8 +59,21 @@ def _shot_to_dict(shot: Shot) -> dict:
         "storyboard_image": shot.storyboard_image,
         "notes": shot.notes,
         "image_prompt": shot.image_prompt,
+        "active_version_id": shot.active_version_id,
         "created_at": shot.created_at.isoformat() if shot.created_at else None,
         "updated_at": shot.updated_at.isoformat() if shot.updated_at else None,
+    }
+
+
+def _version_to_dict(version: ShotVersion) -> dict:
+    return {
+        "id": version.id,
+        "shot_id": version.shot_id,
+        "version_number": version.version_number,
+        "duration_seconds": version.duration_seconds,
+        "trim_start": version.trim_start,
+        "trim_end": version.trim_end,
+        "created_at": version.created_at.isoformat() if version.created_at else None,
     }
 
 
@@ -83,6 +99,81 @@ def create_shot(data: ShotCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(shot)
     return _shot_to_dict(shot)
+
+
+@router.get("/{shot_id}/versions")
+def get_shot_versions(shot_id: str, db: Session = Depends(get_db)):
+    """List all versions for a shot, ordered by version_number DESC, created_at DESC, id DESC."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    versions = (
+        db.query(ShotVersion)
+        .filter(ShotVersion.shot_id == shot_id)
+        .order_by(
+            desc(ShotVersion.version_number),
+            desc(ShotVersion.created_at),
+            desc(ShotVersion.id),
+        )
+        .all()
+    )
+    return [_version_to_dict(v) for v in versions]
+
+
+@router.post("/{shot_id}/regenerate")
+def regenerate_shot(shot_id: str, db: Session = Depends(get_db)):
+    """Create a new ShotVersion, increment version_number, propagate active_version_id to timeline items."""
+    shot = db.query(Shot).filter(Shot.id == shot_id).first()
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
+    # Find the previous version to inherit fields from
+    prev_version = (
+        db.query(ShotVersion)
+        .filter(ShotVersion.shot_id == shot_id)
+        .order_by(desc(ShotVersion.version_number))
+        .first()
+    )
+
+    if prev_version is not None:
+        new_version_number = prev_version.version_number + 1
+        duration_seconds = prev_version.duration_seconds
+        trim_start = prev_version.trim_start
+        trim_end = prev_version.trim_end
+    else:
+        new_version_number = 1
+        duration_seconds = 0.0
+        trim_start = 0.0
+        trim_end = None
+
+    new_version = ShotVersion(
+        shot_id=shot_id,
+        version_number=new_version_number,
+        duration_seconds=duration_seconds,
+        trim_start=trim_start,
+        trim_end=trim_end,
+    )
+    db.add(new_version)
+    db.flush()
+
+    # Set Shot.active_version_id to the new version
+    shot.active_version_id = new_version.id
+
+    # Propagate new active_version_id to all TimelineItem rows referencing this shot
+    timeline_items = db.query(TimelineItem).filter(TimelineItem.shot_id == shot_id).all()
+    for item in timeline_items:
+        item.active_version_id = new_version.id
+
+    db.commit()
+    db.refresh(new_version)
+    db.refresh(shot)
+
+    return {
+        "shot_id": shot.id,
+        "active_version_id": shot.active_version_id,
+        "new_version": _version_to_dict(new_version),
+    }
 
 
 @router.get("/{shot_id}")
