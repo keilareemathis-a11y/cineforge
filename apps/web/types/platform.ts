@@ -35,6 +35,8 @@ export interface TimelineItem {
   id: string;
   position: number;
   duration_seconds: number;
+  trim_start?: number;
+  trim_end?: number | null;
   shot: Shot;
 }
 
@@ -43,6 +45,7 @@ export interface Shot {
   prompt: string;
   active_version_id: string;
   created_at: string;
+  storyboard_image?: string;
 }
 
 export interface ShotVersion {
@@ -50,6 +53,11 @@ export interface ShotVersion {
   shot_id: string;
   image_url: string;
   video_url?: string;
+  version_number?: number;
+  duration_seconds?: number;
+  trim_start?: number;
+  trim_end?: number | null;
+  provider?: string;
   status: 'pending' | 'processing' | 'ready' | 'failed';
   created_at: string;
 }

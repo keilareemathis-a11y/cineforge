@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.core.database import Base, get_db
 from app.models.Project import Project as ProjectModel
+from app.models.character import Character
 from app.models.film_draft import FilmDraft
 
 TEST_DATABASE_URL = "sqlite:///./test_shots.db"
@@ -61,6 +62,8 @@ class TestCreateShot:
         data = response.json()
         assert data["scene_id"] == "scene_1"
         assert data["status"] == "planned"
+        assert data["storyboard_image"].startswith("data:image/")
+        assert data["prompt"] == "Storyboard frame"
         assert "id" in data
 
     def test_create_shot_full(self):
@@ -200,6 +203,175 @@ class TestProjectRoutes:
 
 
 # ---------------------------------------------------------------------------
+# Characters
+# ---------------------------------------------------------------------------
+
+class TestCharacterRoutes:
+    def test_create_character(self):
+        response = client.post(
+            "/api/characters",
+            json={
+                "user_id": "user_1",
+                "name": "Ava",
+                "description": "Lead detective",
+                "reference_image_url": "https://example.com/ava.png",
+                "appearance_traits": {"hair": "black", "coat": "trench"},
+                "voice_profile": "calm",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == "user_1"
+        assert data["name"] == "Ava"
+        assert data["appearance_traits"]["coat"] == "trench"
+        assert "id" in data
+
+    def test_list_characters(self):
+        client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        client.post("/api/characters", json={"user_id": "user_2", "name": "Jon"})
+
+        response = client.get("/api/characters")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {character["name"] for character in data} == {"Ava", "Jon"}
+
+    def test_get_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.get(f"/api/characters/{character_id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == character_id
+
+    def test_get_character_not_found(self):
+        response = client.get("/api/characters/nonexistent-character")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+    def test_update_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.patch(
+            f"/api/characters/{character_id}",
+            json={"description": "Updated character", "voice_profile": "confident"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["description"] == "Updated character"
+        assert data["voice_profile"] == "confident"
+        assert data["name"] == "Ava"
+
+    def test_update_character_not_found(self):
+        response = client.patch("/api/characters/nonexistent-character", json={"name": "Missing"})
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+    def test_delete_character(self):
+        create_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = create_resp.json()["id"]
+
+        response = client.delete(f"/api/characters/{character_id}")
+        assert response.status_code == 200
+        assert response.json()["message"] == "Character deleted"
+
+        get_response = client.get(f"/api/characters/{character_id}")
+        assert get_response.status_code == 404
+
+    def test_delete_character_with_scene_reference(self):
+        character_resp = client.post("/api/characters", json={"user_id": "user_1", "name": "Ava"})
+        character_id = character_resp.json()["id"]
+        scene_resp = client.post(
+            "/api/scenes",
+            json={"project_id": "project_1", "title": "Opening", "character_ids": [character_id]},
+        )
+        scene_id = scene_resp.json()["id"]
+
+        delete_response = client.delete(f"/api/characters/{character_id}")
+        assert delete_response.status_code == 200
+
+        scene_response = client.get(f"/api/scenes/{scene_id}")
+        assert scene_response.status_code == 200
+        assert scene_response.json()["character_ids"] == []
+
+    def test_delete_character_not_found(self):
+        response = client.delete("/api/characters/nonexistent-character")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found"
+
+
+# ---------------------------------------------------------------------------
+# Scenes
+# ---------------------------------------------------------------------------
+
+class TestSceneRoutes:
+    def test_create_scene(self):
+        db = TestingSessionLocal()
+        try:
+            character_one = Character(user_id="user_1", name="Ava")
+            character_two = Character(user_id="user_1", name="Jon")
+            db.add_all([character_one, character_two])
+            db.commit()
+            db.refresh(character_one)
+            db.refresh(character_two)
+        finally:
+            db.close()
+
+        response = client.post(
+            "/api/scenes",
+            json={
+                "project_id": "project_1",
+                "title": "Rooftop confrontation",
+                "environment": "city rooftop",
+                "lighting": "neon",
+                "weather": "rain",
+                "mood": "tense",
+                "character_ids": [character_one.id, character_two.id],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["project_id"] == "project_1"
+        assert data["title"] == "Rooftop confrontation"
+        assert set(data["character_ids"]) == {character_one.id, character_two.id}
+        assert "id" in data
+
+    def test_create_scene_character_not_found(self):
+        response = client.post(
+            "/api/scenes",
+            json={"project_id": "project_1", "title": "Missing cast", "character_ids": ["missing-character"]},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Character not found: missing-character"
+
+    def test_list_scenes(self):
+        client.post("/api/scenes", json={"project_id": "project_1", "title": "Opening"})
+        client.post("/api/scenes", json={"project_id": "project_1", "title": "Finale"})
+
+        response = client.get("/api/scenes")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {scene["title"] for scene in data} == {"Opening", "Finale"}
+
+    def test_get_scene(self):
+        create_resp = client.post("/api/scenes", json={"project_id": "project_1", "title": "Opening"})
+        scene_id = create_resp.json()["id"]
+
+        response = client.get(f"/api/scenes/{scene_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == scene_id
+        assert data["title"] == "Opening"
+
+    def test_get_scene_not_found(self):
+        response = client.get("/api/scenes/nonexistent-scene")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Scene not found"
+
+
+# ---------------------------------------------------------------------------
 # Shot active version behavior
 # ---------------------------------------------------------------------------
 
@@ -261,6 +433,19 @@ class TestShotVersions:
         assert version_numbers == sorted(version_numbers, reverse=True)
         assert version_numbers[0] == 3
 
+    def test_get_versions_include_generated_visuals(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Wide sunset over a canyon"})
+        shot_id = resp.json()["id"]
+
+        client.post(f"/api/shots/{shot_id}/regenerate")
+        response = client.get(f"/api/shots/{shot_id}/versions")
+
+        assert response.status_code == 200
+        version = response.json()[0]
+        assert version["image_url"].startswith("data:image/")
+        assert version["status"] == "ready"
+        assert version["prompt"] == "Wide sunset over a canyon"
+
     def test_get_versions_not_found(self):
         response = client.get("/api/shots/nonexistent/versions")
         assert response.status_code == 404
@@ -303,6 +488,8 @@ class TestRegenerate:
         data = response.json()
         assert data["shot_id"] == shot_id
         assert data["new_version"]["version_number"] == 1
+        assert data["new_version"]["image_url"].startswith("data:image/")
+        assert data["new_version"]["status"] == "ready"
         assert data["active_version_id"] == data["new_version"]["id"]
 
     def test_regenerate_increments_version_number(self):
@@ -384,6 +571,59 @@ class TestRegenerate:
         response = client.post("/api/shots/nonexistent/regenerate")
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
+
+    def test_regenerate_creates_provider_backed_clip(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        response = client.post(
+            f"/api/shots/{shot_id}/regenerate",
+            json={"provider": "pika"},
+        )
+        assert response.status_code == 200
+        version = response.json()["new_version"]
+        assert version["provider"] == "pika"
+        assert version["video_url"] == f"/api/shots/{shot_id}/versions/{version['id']}/video"
+
+        video_response = client.get(version["video_url"])
+        assert video_response.status_code == 200
+        assert video_response.headers["content-type"] == "video/mp4"
+        assert len(video_response.content) > 0
+
+
+class TestSelectVersion:
+    def test_select_version_updates_shot_and_timeline(self):
+        _, draft_id = create_project_and_draft()
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        first = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]
+        second = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": second["id"]},
+        )
+
+        response = client.post(f"/api/shots/{shot_id}/versions/{first['id']}/select")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["active_version_id"] == first["id"]
+        assert data["versions"][0]["image_url"].startswith("data:image/")
+
+        shot = client.get(f"/api/shots/{shot_id}").json()
+        assert shot["active_version_id"] == first["id"]
+
+        timeline = client.get(f"/api/drafts/{draft_id}/timeline").json()
+        assert timeline["timeline_items"][0]["active_version_id"] == first["id"]
+
+    def test_select_version_not_found(self):
+        resp = client.post("/api/shots", json={"scene_id": "scene_1"})
+        shot_id = resp.json()["id"]
+
+        response = client.post(f"/api/shots/{shot_id}/versions/does-not-exist/select")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "ShotVersion not found"
 
 
 # ---------------------------------------------------------------------------
@@ -486,3 +726,110 @@ class TestDraftTimeline:
         )
         assert response.status_code == 404
         assert response.json()["detail"] == "Shot not found"
+
+
+class TestFilmRender:
+    def test_render_film_creates_mp4(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Rainy city street"})
+        shot_id = shot_resp.json()["id"]
+        regen = client.post(f"/api/shots/{shot_id}/regenerate").json()
+        version_id = regen["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 1, "active_version_id": version_id},
+        )
+
+        render_response = client.post(f"/api/films/{draft_id}/render")
+        assert render_response.status_code == 200
+        render_data = render_response.json()
+        assert render_data["status"] == "rendered"
+        assert render_data["video_url"] == f"/api/films/{draft_id}/rendered"
+
+        video_response = client.get(render_data["video_url"])
+        assert video_response.status_code == 200
+        assert video_response.headers["content-type"] == "video/mp4"
+        assert len(video_response.content) > 0
+
+    def test_timeline_reorder_and_trim_update(self):
+        _, draft_id = create_project_and_draft()
+
+        shot_a = client.post("/api/shots", json={"scene_id": "scene_1"}).json()["id"]
+        shot_b = client.post("/api/shots", json={"scene_id": "scene_1"}).json()["id"]
+        version_a = client.post(f"/api/shots/{shot_a}/regenerate").json()["new_version"]["id"]
+        version_b = client.post(f"/api/shots/{shot_b}/regenerate").json()["new_version"]["id"]
+
+        first = client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_a, "position": 0, "active_version_id": version_a},
+        ).json()
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_b, "position": 1, "active_version_id": version_b},
+        )
+
+        reorder = client.post(
+            f"/api/films/{draft_id}/timeline/reorder",
+            json={"item_id": first["timeline_item_id"], "new_position": 1},
+        )
+        assert reorder.status_code == 200
+        reordered_items = reorder.json()["timeline_items"]
+        assert reordered_items[1]["timeline_item_id"] == first["timeline_item_id"]
+
+        patch = client.patch(
+            f"/api/films/{draft_id}/timeline/{first['timeline_item_id']}",
+            json={"trim_start": 0.1, "trim_end": 0.4},
+        )
+        assert patch.status_code == 200
+        patched_item = next(
+            item for item in patch.json()["timeline_items"] if item["timeline_item_id"] == first["timeline_item_id"]
+        )
+        assert patched_item["trim_start"] == 0.1
+        assert patched_item["trim_end"] == 0.4
+
+    def test_publish_creates_public_film_and_creator_data(self):
+        project_id, draft_id = create_project_and_draft(name="Nova Frames", title="Launch Cut")
+
+        shot_resp = client.post("/api/shots", json={"scene_id": "scene_1", "image_prompt": "Launch sequence"})
+        shot_id = shot_resp.json()["id"]
+        version_id = client.post(f"/api/shots/{shot_id}/regenerate").json()["new_version"]["id"]
+
+        client.post(
+            f"/api/drafts/{draft_id}/timeline-items",
+            json={"shot_id": shot_id, "position": 0, "active_version_id": version_id},
+        )
+
+        publish_response = client.post(
+            "/api/films/publish",
+            json={"draft_id": draft_id, "tags": ["sci-fi", "launch"]},
+        )
+        assert publish_response.status_code == 200
+        film = publish_response.json()
+        assert film["id"] == draft_id
+        assert film["video_url"] == f"/api/films/{draft_id}/rendered"
+        assert film["creator"]["id"] == project_id
+        assert film["creator"]["handle"] == "nova-frames"
+        assert film["tags"] == ["sci-fi", "launch"]
+
+        films_response = client.get("/api/films?sort=trending")
+        assert films_response.status_code == 200
+        assert films_response.json()[0]["id"] == draft_id
+
+        creator_response = client.get("/api/users/@nova-frames")
+        assert creator_response.status_code == 200
+        creator = creator_response.json()
+        assert creator["id"] == project_id
+        assert creator["films"][0]["id"] == draft_id
+
+        like_response = client.post(f"/api/films/{draft_id}/like")
+        assert like_response.status_code == 200
+        assert like_response.json()["like_count"] == 1
+
+        support_response = client.post(
+            f"/api/users/{project_id}/support",
+            json={"amount_cents": 500},
+        )
+        assert support_response.status_code == 200
+        assert support_response.json()["clientSecret"] == f"support_{project_id}_500"

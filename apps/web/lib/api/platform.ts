@@ -10,6 +10,13 @@ async function apiFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function normalizeFilm(film: PublishedFilm): PublishedFilm {
+  return {
+    ...film,
+    video_url: film.video_url && film.video_url.startsWith('/') ? `${API_BASE}${film.video_url}` : film.video_url,
+  };
+}
+
 export async function getHomepageData(): Promise<{
   trending: PublishedFilm[];
   newReleases: PublishedFilm[];
@@ -21,7 +28,7 @@ export async function getHomepageData(): Promise<{
       apiFetch<PublishedFilm[]>('/api/films?sort=new'),
     ]);
     const popularCreators = await apiFetch<CreatorProfile[]>('/api/users?sort=popular');
-    return { trending, newReleases, popularCreators };
+    return { trending: trending.map(normalizeFilm), newReleases: newReleases.map(normalizeFilm), popularCreators };
   } catch {
     const sorted = [...mockFilms].sort((a, b) => b.view_count - a.view_count);
     return {
@@ -36,7 +43,7 @@ export async function getHomepageData(): Promise<{
 
 export async function getFilmById(id: string): Promise<PublishedFilm> {
   try {
-    return await apiFetch<PublishedFilm>(`/api/films/${id}`);
+    return normalizeFilm(await apiFetch<PublishedFilm>(`/api/films/${id}`));
   } catch {
     const film = mockFilms.find((f) => f.id === id);
     if (!film) throw new Error(`Film not found: ${id}`);
@@ -46,7 +53,11 @@ export async function getFilmById(id: string): Promise<PublishedFilm> {
 
 export async function getCreatorProfile(handle: string): Promise<CreatorProfile> {
   try {
-    return await apiFetch<CreatorProfile>(`/api/users/@${handle}`);
+    const creator = await apiFetch<CreatorProfile>(`/api/users/@${handle}`);
+    return {
+      ...creator,
+      films: creator.films?.map(normalizeFilm),
+    };
   } catch {
     const creator = mockCreators.find((c) => c.handle === handle);
     if (!creator) throw new Error(`Creator not found: ${handle}`);

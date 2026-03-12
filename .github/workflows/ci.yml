@@ -20,11 +20,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         working-directory: apps/api
         run: pip install -r requirements.txt
 
+     PYTHONPATH=. pytest tests/ -v --maxfail=1 --disable-warnings
       - name: Run pytest
         working-directory: apps/api
         env:
