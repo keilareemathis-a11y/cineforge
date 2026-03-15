@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import type { FilmTimeline, ShotVersionsResponse } from '../../types/platform';
+import type { ShotVersionsResponse } from '../../types/platform';
 import type { EditorState } from '../../types/editor';
 import {
   loadTimeline,
