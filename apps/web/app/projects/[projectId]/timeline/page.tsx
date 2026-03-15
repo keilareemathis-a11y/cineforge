@@ -12,7 +12,6 @@ interface ClipWithDetails extends Clip {
 export default function TimelinePage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
-  const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [clips, setClips] = useState<ClipWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -60,7 +59,6 @@ export default function TimelinePage() {
       }));
 
       setProject(proj);
-      setTimeline(tl);
       setClips(enrichedClips);
     } finally {
       setLoading(false);
@@ -302,7 +300,7 @@ export default function TimelinePage() {
                         fontSize: '10px',
                       }}
                     >
-                      No img
+                      No image
                     </div>
                   )}
                 </div>

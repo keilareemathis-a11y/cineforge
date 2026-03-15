@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR =
+  process.env.CINEFORGE_DATA_DIR ?? path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 export interface Project {
@@ -300,7 +301,7 @@ export const timelinesStore = {
     const clipMap = new Map(timeline.clips.map((c) => [c.id, c]));
     timeline.clips = clipIds.map((id, position) => {
       const clip = clipMap.get(id);
-      if (!clip) throw new Error(`Clip not found: ${id}`);
+      if (!clip) throw new Error(`Clip ID ${id} not found in timeline for project ${projectId}`);
       return { ...clip, position };
     });
     timeline.updated_at = new Date().toISOString();

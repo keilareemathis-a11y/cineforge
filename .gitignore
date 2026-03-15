@@ -141,3 +141,6 @@ __pycache__/
 *.sqlite3
 .env
 
+# CineForge studio data (local JSON persistence – not for VCS)
+apps/web/data/*.json
+
